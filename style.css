@@ -64,7 +64,8 @@ kbd {
               border-bottom: 1px solid #2c2c38; }
 .dex { display: grid; grid-template-columns: 13em 1fr; gap: 12px; }
 .dex-list { border-right: 1px solid #2c2c38; padding-right: 8px; }
-.dex-detail { font-size: 14px; line-height: 1.8; }
+/* 説明は、一覧を下までスクロールしても画面の上に残るようにする(sticky:スクロールしてもその位置にとどまる) */
+.dex-detail { font-size: 14px; line-height: 1.8; position: sticky; top: 0; align-self: start; }
 .dex-name { font-size: 17px; font-weight: bold; margin-bottom: 4px; }
 .dex-label { display: inline-block; width: 6em; color: #999; }
 .result-label { display: inline-block; width: 8em; color: #999; }
