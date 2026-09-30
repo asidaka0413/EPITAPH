@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>EPITAPH</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+  <div class="main">
+    <div class="panel">
+      <div class="panel-title" id="screen-title"></div>
+      <div id="screen"></div>
+    </div>
+    <div class="panel" id="status-panel">
+      <div id="status"></div>
+    </div>
+    <div id="hint"></div>
+  </div>
+  <div class="side">
+    <div class="panel" id="equip-panel">
+      <div class="panel-title">装備</div>
+      <div id="equip"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">ログ</div>
+      <div id="log"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">設定</div>
+      <div class="setting-row">
+        <span>拾ったとき、空いている枠に自動で装備</span>
+        <button id="auto-equip-btn" class="toggle" onclick="toggleAutoEquip(); this.blur();"></button>
+      </div>
+    </div>
+    <div class="panel debug-panel" id="debug-panel">
+      <div class="panel-title">デバッグ(拠点の設定で OFF にできます)</div>
+      <div id="debug"></div>
+    </div>
+  </div>
+</div>
+<!-- データ(敵・装備・書・効果を増やすときは data/ の中のファイルを書き換える) -->
+<script src="data/equipment.js"></script>
+<script src="data/monsters.js"></script>
+<script src="data/books.js"></script>
+<script src="data/effects.js"></script>
+<!-- プログラム(この順番で読み込む。後のファイルは前のファイルの関数や変数を使う) -->
+<script src="js/config.js"></script>
+<script src="js/util.js"></script>
+<script src="js/state.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/items.js"></script>
+<script src="js/dungeon.js"></script>
+<script src="js/enemies.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/screens.js"></script>
+<script src="js/town.js"></script>
+<script src="js/debug.js"></script>
+<script src="js/input.js"></script>
+</body>
+</html>

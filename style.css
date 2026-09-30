@@ -1,0 +1,122 @@
+/* 文字は日本語と英数字で大きさ・太さがそろう BIZ UDゴシックを使う(マップだけは Consolas) */
+body {
+  background: #0c0c10; color: #ddd; margin: 16px;
+  font-family: "BIZ UDGothic", "BIZ UDゴシック", "Yu Gothic UI", Meiryo, monospace;
+}
+.layout { display: flex; gap: 16px; align-items: flex-start; }
+.main { display: flex; flex-direction: column; gap: 12px; }
+.side { width: 460px; display: flex; flex-direction: column; gap: 12px; }
+.panel { background: #14141b; border: 1px solid #2c2c38; border-radius: 6px; padding: 10px 14px; }
+.panel-title { color: #8a8aa0; font-size: 13px; margin-bottom: 8px; letter-spacing: 0.1em; }
+
+/* メイン画面:マップ表示のときと、文字の一覧を出すときで見た目を切り替える */
+/*   大きさはマップと同じに固定する(幅・高さは起動時に BALANCE のマップサイズから決める)
+     持ち物などの一覧が長くなったときは、中だけスクロールする */
+/*   #screen の大きさは文字数(ch)で決めるので、フォントは画面を切り替えても変えない(中身の .text-body だけ変える) */
+#screen { font-size: 16px; overflow-y: auto; font-family: Consolas, "BIZ UDGothic", "MS Gothic", monospace; }
+#screen.map-mode { white-space: pre; line-height: 1.15; overflow: hidden; }
+#screen.text-mode { line-height: 1.8; }
+.text-body { font-family: "BIZ UDGothic", "BIZ UDゴシック", "Yu Gothic UI", Meiryo, monospace; font-size: 15px; }
+
+/* 表の形の一覧(列の幅をそろえる)。列の幅は行ごとに style で指定する */
+.grid-row { display: grid; column-gap: 10px; align-items: baseline; border-radius: 3px; padding: 0 4px 0 0; }
+.grid-row > span { min-width: 0; }
+.list-title { margin-bottom: 4px; }
+.list-gap { height: 10px; }
+.sub { color: #8a8a99; font-size: 13px; line-height: 1.5; }
+.note { color: #8a8a99; font-size: 13px; margin-bottom: 8px; line-height: 1.6; }
+
+#status { font-size: 15px; line-height: 1.6; }
+.status-top { display: flex; gap: 24px; margin-bottom: 4px; }
+.bar { background: #2a2a35; border-radius: 3px; overflow: hidden; margin: 2px 0 6px; }
+.bar-fill { height: 100%; }
+.stats-grid { display: grid; grid-template-columns: repeat(3, auto); gap: 2px 20px; margin-top: 6px; }
+
+#equip { font-size: 14px; line-height: 1.6; }
+.equip-row { display: grid; grid-template-columns: 6.5em 1fr; padding: 1px 0; }
+.equip-mat { font-size: 12px; }
+
+#log, #screen { scrollbar-color: #444 #14141b; } /* スクロールバーを画面の色に合わせる */
+#log { height: 260px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
+.log-new { color: #ffe066; }
+.log-old { color: #777; }
+
+/* 操作説明:長くても左の画面の幅を広げないように、画面の幅に合わせて折り返す */
+#hint { color: #8a8aa0; font-size: 14px; width: 0; min-width: 100%; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+#hint > span { white-space: nowrap; }
+kbd {
+  font-family: inherit; background: #1d1d26; border: 1px solid #444; border-radius: 3px;
+  padding: 0 5px; color: #ccc;
+}
+
+/* 一覧で選んでいる行 */
+.sel { background: #262636; border-radius: 3px; }
+.tag { color: #000; background: #ffd84d; border-radius: 3px; padding: 0 4px; font-size: 12px; }
+.info { margin-top: 12px; padding-top: 8px; border-top: 1px solid #2c2c38; }
+.info-top { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #2c2c38; } /* 一覧より上に出す説明(一覧が長くても見えるように) */
+
+/* 一覧のカーソル(▶)の幅 */
+.cur { display: inline-block; width: 1.2em; }
+.result-title { font-size: 18px; font-weight: bold; }
+/* 拠点のメニューの上に出すゲームのタイトル */
+.game-title { font-family: Consolas, monospace; font-size: 30px; letter-spacing: 0.45em; color: #c8c0a8;
+              text-align: center; margin: 18px 0 22px; padding: 0 0 14px 0.45em; /* 左の padding は字間の分を打ち消して中央にするため */
+              border-bottom: 1px solid #2c2c38; }
+.dex { display: grid; grid-template-columns: 13em 1fr; gap: 12px; }
+.dex-list { border-right: 1px solid #2c2c38; padding-right: 8px; }
+.dex-detail { font-size: 14px; line-height: 1.8; }
+.dex-name { font-size: 17px; font-weight: bold; margin-bottom: 4px; }
+.dex-label { display: inline-block; width: 6em; color: #999; }
+.result-label { display: inline-block; width: 8em; color: #999; }
+.new { color: #000; background: #ff6b6b; border-radius: 3px; padding: 0 4px; font-size: 11px; font-weight: bold; } /* NEW の印 */
+/* 設定パネル */
+.setting-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+.toggle {
+  font-family: inherit; font-size: 13px; min-width: 56px; padding: 3px 10px; cursor: pointer;
+  border-radius: 12px; border: 1px solid #444; background: #1d1d26; color: #888;
+}
+.toggle.on { background: #2e6b3a; border-color: #4cd964; color: #fff; }
+
+/* デバッグパネル */
+.debug-panel { border-color: #6b4a2e; }
+#debug { display: flex; flex-wrap: wrap; gap: 6px; }
+#debug .toggle { border-radius: 4px; }
+
+/* 持ち物画面のタブ */
+.tabs { display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 1px solid #2c2c38; }
+.tab { padding: 2px 14px; color: #777; border-radius: 4px 4px 0 0; }
+.tab.active { color: #fff; background: #262636; border-bottom: 2px solid #ffd84d; }
+
+/* 色 */
+.dim { color: #777; }
+.up { color: #5ddc6a; }
+.down { color: #ff6b6b; }
+.wall { color: #555566; }
+/* 壁のマス:1文字ぶんの幅・1行ぶんの高さをすき間なく塗る(行の高さ 1.15 はマップの line-height と同じ) */
+.wall-block { display: inline-block; width: 1ch; height: 1.15em; vertical-align: top; background: #34343f; }
+.floor { color: #2f2f3c; }
+.player { color: #fff; font-weight: bold; }
+.monster { color: #ff5555; }
+.stairs { color: #55ff88; font-weight: bold; }
+.stairs-sealed { color: #884444; font-weight: bold; } /* エリートを倒すまで封印されている階段 */
+.elite { font-weight: bold; text-decoration: underline; }
+.primed { color: #fff; background: #c02020; font-weight: bold; } /* 膨らんだ爆ぜ虫 */
+.grave { color: #d8d0b8; font-weight: bold; }                    /* 前の自分の墓 */
+.dormant { opacity: 0.55; }                                       /* 眠っている墓守 */
+.flame { color: #ff8030; font-weight: bold; }                     /* 鬼火の炎 */
+.poison { color: #b060d0; font-weight: bold; }                    /* 毒 */
+.potion { color: #ff77cc; }
+.armor { color: #55ccff; }
+.ring { color: #ffd84d; }
+.earring { color: #cc88ff; }
+.weapon { color: #88bbff; }
+.shield { color: #b0c4de; }
+.mat { color: #5fd7d7; }
+.book { color: #ffae42; font-weight: bold; }
+.trait-on { color: #ffae42; }
+.bless { color: #7fd6a0; }   /* 呪われた装備の良い効果 */
+.curse { color: #d56cff; }   /* 呪い */
+.curse-tag { color: #fff; background: #7a2a9a; border-radius: 3px; padding: 0 4px; font-size: 12px; }
+.holy-tag { color: #0c2a3a; background: #9fe0ff; border-radius: 3px; padding: 0 4px; font-size: 12px; }
+.mini-bar { display: inline-block; width: 90px; height: 6px; background: #2a2a35; border-radius: 3px; overflow: hidden; vertical-align: middle; }
+.mini-bar > span { display: block; height: 100%; }
