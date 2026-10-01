@@ -183,10 +183,10 @@ function enemyCritPercent() {
   return BALANCE.enemyCritBase + (depth - 1) * BALANCE.enemyCritPerDepth + effectValue("enemyCrit"); // 呪い「隙」で上がる
 }
 
-// 敵の攻撃力(1回分)。深い階層ほど上がる(11階からは段階的な倍率、険しい道の倍率もかかる)。エリートはさらに強い
+// 敵の攻撃力(1回分)。深い階層ほど上がる(11階からは上がり幅が大きく、層の段差・険しい道の倍率もかかる)。エリートはさらに強い
 //   ゴブリンの族長などの号令を受けていれば、さらに上がる
 function monsterPower(m, min = m.data.attackMin, max = m.data.attackMax) {
-  const raw = (randInt(min, max) + (depth - 1) * (m.data.attackPerDepth || 0)) * floorAttackRate() * commandRate(m);
+  const raw = enemyStat(randInt(min, max), m.data.attackPerDepth, "attack") * commandRate(m);
   return Math.round(m.elite ? raw * BALANCE.eliteAttackMultiplier : raw);
 }
 
@@ -250,7 +250,7 @@ function meetMonster(id) {
 
 // 敵の攻撃力の範囲 [最小, 最大](詳細ウィンドウ用。monsterPower と同じ計算)
 function monsterPowerRange(m) {
-  const calc = v => Math.round((v + (depth - 1) * (m.data.attackPerDepth || 0)) * floorAttackRate() * commandRate(m) * (m.elite ? BALANCE.eliteAttackMultiplier : 1));
+  const calc = v => Math.round(enemyStat(v, m.data.attackPerDepth, "attack") * commandRate(m) * (m.elite ? BALANCE.eliteAttackMultiplier : 1));
   return [calc(m.data.attackMin), calc(m.data.attackMax)];
 }
 
@@ -739,7 +739,7 @@ function cureDots() {
 // 敵の攻撃が当たったときの、継続ダメージ(ability の damage / damagePerDepth / turns から計算)
 //   深い階・険しい道・エリートほど強い(攻撃力と同じ倍率)
 function dotDamageOf(m, ab) {
-  return Math.round((ab.damage + (depth - 1) * (ab.damagePerDepth || 0)) * floorAttackRate() * (m.elite ? BALANCE.eliteAttackMultiplier : 1));
+  return Math.round(enemyStat(ab.damage, ab.damagePerDepth, "attack") * (m.elite ? BALANCE.eliteAttackMultiplier : 1));
 }
 
 // ==================== 鈍足 ====================

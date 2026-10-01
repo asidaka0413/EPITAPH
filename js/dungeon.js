@@ -274,33 +274,31 @@ function announceElite() {
   if (elite) addLog(`${monsterName(elite)}が階段を守っている！ 倒すまで階段は封印されている`);
 }
 
-// 階 d の敵の段階(enemyGrowthFromFloor 階より浅ければ 0。そこから enemyTierFloors 階ごとに +1)
-function enemyTier(d) {
-  if (d < BALANCE.enemyGrowthFromFloor) return 0;
-  return Math.floor((d - BALANCE.enemyGrowthFromFloor) / BALANCE.enemyTierFloors) + 1;
+// 階 d までに、敵の「1階ごとの上がり幅」を何回ぶん足すか(kind:"hp" か "attack")
+//   2〜10階は1階につき1回ぶん。enemySteepFromFloor 階からは、1階につき enemySteepHp / enemySteepAttack 回ぶん
+//   さらに、その階の層の enemySlope 倍(中層・深層 … ほど、1階降りるごとに強くなる量が大きい)
+function enemySteps(d, kind) {
+  const steep = kind === "hp" ? BALANCE.enemySteepHp : BALANCE.enemySteepAttack;
+  let steps = 0;
+  for (let x = 2; x <= d; x++) {
+    steps += x < BALANCE.enemySteepFromFloor ? 1 : steep * layerOf(x).enemySlope;
+  }
+  return steps;
 }
 
-// 階 d の敵のHP・攻撃力にかかる倍率(段階ごとに増える)
-function enemyHpRate(d) {
-  return 1 + enemyTier(d) * BALANCE.enemyHpGrowthPerTier;
-}
-function enemyAttackRate(d) {
-  return 1 + enemyTier(d) * BALANCE.enemyAttackGrowthPerTier;
-}
-
-// 今いる階の敵のHP・攻撃力にかかる倍率(深さの段階 × 選んだ道の効果)
-function floorHpRate() {
-  return enemyHpRate(depth) * routeFx("enemyHp", 1);
-}
-function floorAttackRate() {
-  return enemyAttackRate(depth) * routeFx("enemyAttack", 1);
+// 今いる階での、敵の数値(HP・攻撃力・毒などのダメージ)
+//   base:1階での値 / perDepth:1階ごとの上がり幅(monsters.js の hpPerDepth など) / kind:"hp" か "attack"
+//   = (base + perDepth × 上がった回数) × 層の段差(enemyBoost) × 選んだ道の倍率(険しい道)
+function enemyStat(base, perDepth, kind) {
+  const route = kind === "hp" ? routeFx("enemyHp", 1) : routeFx("enemyAttack", 1);
+  return (base + (perDepth || 0) * enemySteps(depth, kind)) * layerOf(depth).enemyBoost * route;
 }
 
 // 敵を1体作る(この階の強さで)。extra に { elite: true } などを渡せる
 //   hp / maxHp:今のHPと最大HP(トロルの回復に使う) / data:名前・記号・攻撃力などは data から読む
 //   energy:行動力。毎ターン speed ずつたまり、1 たまるごとに1回行動する
 function newMonster(data, x, y, extra = {}) {
-  let hp = Math.round((data.hp + (depth - 1) * data.hpPerDepth) * floorHpRate());
+  let hp = Math.round(enemyStat(data.hp, data.hpPerDepth, "hp"));
   if (extra.elite) hp = Math.round(hp * BALANCE.eliteHpMultiplier);
   // facing:向き(最初はランダム)。hunting:プレイヤーに気づいているか(最初は気づいていない)
   return { x, y, hp, maxHp: hp, data, energy: 0, facing: DIRS4[randInt(0, 3)], hunting: false, ...extra };

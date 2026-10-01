@@ -101,7 +101,7 @@ function activeSets(eqMap = equipped) {
   const counts = clanCounts(eqMap);
   const list = [];
   for (const clan of clanList) {
-    for (const set of clan.sets) {
+    for (const set of clan.sets || []) {
       if ((counts[clan.id] || 0) >= set.count) list.push(set);
     }
   }

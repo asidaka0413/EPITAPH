@@ -646,6 +646,7 @@ function clanSetHTML(eqMap, needEquip) {
   const cols = "8em 3em 1fr";
   let h = gridRow(false, cols, [span("dim", "一族"), span("dim", "数"), span("dim", "セット効果")]);
   for (const clan of clanList) {
+    if (!clan.sets || clan.sets.length === 0) continue; // セット効果のない一族(はぐれ者)は出さない
     const n = counts[clan.id] || 0;
     const max = Math.max(...clan.sets.map(s => s.count));
     const sets = clan.sets.map(s => span(n >= s.count ? "trait-on" : "dim", `${s.count}個:${s.desc}`)).join("<br>");
@@ -982,7 +983,7 @@ function dexDetailHTML(tab, e) {
     h += row("一族", monsterClan(e) ? clanNameHTML(monsterClan(e)) : span("dim", "なし"));
     h += row("HP", `${e.hp} ${span("dim", `(1階ごとに+${e.hpPerDepth})`)}`);
     h += row("攻撃", `${e.attackMin}〜${e.attackMax} ${span("dim", `(1階ごとに+${e.attackPerDepth || 0})`)}`);
-    h += row("", span("dim", `地下${BALANCE.enemyGrowthFromFloor}階から${BALANCE.enemyTierFloors}階ごとに、さらに HP+${Math.round(BALANCE.enemyHpGrowthPerTier * 100)}%・攻撃+${Math.round(BALANCE.enemyAttackGrowthPerTier * 100)}%`));
+    h += row("", span("dim", `地下${BALANCE.enemySteepFromFloor}階からは、1階ごとの上がり幅が HP×${BALANCE.enemySteepHp}・攻撃×${BALANCE.enemySteepAttack}。深い層ほど、さらに強くなる`));
     h += row("速さ", speedText(e.speed));
     if (e.ability) h += row("特徴", MONSTER_ABILITIES[e.ability.type](e.ability));
     if (e.pack) h += row("群れ", `${e.pack[0]}〜${e.pack[1]}匹の群れで出てくる`);

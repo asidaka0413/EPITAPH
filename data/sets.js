@@ -11,7 +11,7 @@
 //   color :一族の色(札の色と、colors に書いていない敵のマップ上の色)
 //   colors:敵ごとのマップ上の色(monsters.js の id → 色)。同じ一族でも見分けられるよう、明るさを少しずつ変える
 //           エリートの金色・墓守の薄い金色は、この色より優先される。一族のない敵は monsters.js の color のまま
-//   sets  :セット効果。count 個そろうと効く。desc:説明 / 効果(下のどれか。数値はすべて仮)
+//   sets  :セット効果。count 個そろうと効く(sets: [] ならセット効果なしの一族。刻印の札と、依頼の「一族討伐」には出る)。desc:説明 / 効果(下のどれか。数値はすべて仮)
 //             stats        … ステータスが上がる(例:{ agl: 60 })
 //             shieldBlock  … 盾で防ぐ% が増える(例:10 なら +10%)
 //             alarmImmune  … ゴブリンの呼び子の角笛が効かない(吹かれても仲間が集まらない)
@@ -67,5 +67,11 @@ const CLAN_DATA = [
       { count: 2, desc: "やけどにならない", burnImmune: true },
       { count: 4, desc: "ブレスのダメージが半分(属性に関係なく)", damageCut: [{ category: "breath", rate: 0.5 }] },
     ],
+  },
+  {
+    // どの一族にも属さない、はぐれた者たち。セット効果はない
+    id: "outcasts", name: "はぐれ者", short: "はぐれ", color: "#c9a227", // 黄土色系(呪いの紫と紛れないように)
+    colors: { thief: "#c9a227", bomber: "#e8c020" },
+    sets: [],
   },
 ];

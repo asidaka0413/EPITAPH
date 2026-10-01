@@ -169,3 +169,27 @@ kbd {
 .holy-tag { color: #0c2a3a; background: #9fe0ff; border-radius: 3px; padding: 0 4px; font-size: 12px; }
 .mini-bar { display: inline-block; width: 90px; height: 6px; background: #2a2a35; border-radius: 3px; overflow: hidden; vertical-align: middle; }
 .mini-bar > span { display: block; height: 100%; }
+
+/* ==================== スマホなど、幅の狭い画面 ==================== */
+/* 縦持ちのスマホを想定。右の列(装備・依頼・ログ・設定)はマップの下に回す */
+@media (max-width: 800px) {
+  body { margin: 8px; }
+  .layout { flex-direction: column; gap: 8px; }
+  .main { width: 100%; gap: 8px; }
+  .side { width: 100%; flex: none; gap: 8px; }
+  .panel { padding: 8px 10px; }
+  /* マップ(横 mapWidth 文字)が画面の幅に収まるように、文字を小さくする
+     等幅の文字の幅は、文字の大きさのだいたい 0.6 倍。60文字 × 0.6 = 36 なので、使える幅 ÷ 36 にする
+     (#screen の幅・高さは文字数で決めているので、文字を小さくすると画面も一緒に小さくなる) */
+  #screen { font-size: calc((100vw - 40px) / 36); }
+  /* 文字の画面(拠点・持ち物など)は、マップの大きさに合わせると狭すぎるので、幅いっぱい・画面の高さの6割にする */
+  #screen.text-mode { width: auto !important; height: 60vh !important; }
+  .text-body { font-size: 14px; }
+  .status-top { flex-wrap: wrap; gap: 4px 14px; }
+  #status { font-size: 14px; }
+  #log { height: 160px; font-size: 13px; }
+  /* 図鑑:一覧と説明を横に並べると狭いので、縦に並べる */
+  .dex { grid-template-columns: 1fr; }
+  .dex-list { border-right: none; border-bottom: 1px solid #2c2c38; padding: 0 0 8px; max-height: 30vh; overflow-y: auto; }
+  .dex-detail { position: static; }
+}

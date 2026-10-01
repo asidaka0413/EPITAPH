@@ -56,7 +56,7 @@
 //                                                     呼ばれた敵は経験値・固有装備・書を落とさず、素材だけ落とす。呼んだ敵を倒すと崩れ落ちる(素材もなし)
 //                 { type: "reach", range: 2 }      … 縦か横にまっすぐ range マス先まで、その場から突いてくる(間に壁・敵がいれば突けない)
 //   pack        :(省略できる)群れで出る数 [最小, 最大]。例:pack: [2, 3] なら、同じ部屋に2〜3匹まとめて出る(エリートのときは1匹)
-//   clan        :(省略できる)一族。sets.js の id を書く("goblins" / "beasts" / "undead" / "heavy" / "dragons")
+//   clan        :(省略できる)一族。sets.js の id を書く("goblins" / "beasts" / "undead" / "heavy" / "dragons" / "outcasts")
 //                 同じ一族の固有装備から刻んだ刻印をそろえると、セット効果が付く
 //   desc        :(省略できる)図鑑の紹介文。詳細のいちばん下に出る。\n で改行できる
 //                 例:desc: "森に住む小鬼。ひとりなら弱いが、群れると厄介。"
@@ -124,7 +124,7 @@ const MONSTER_DATA = [
   },
   {
     // 回復薬を盗んで逃げる。足が速い
-    id: "thief", name: "盗賊", symbol: "t", color: "#b0b0d0",
+    id: "thief", name: "盗賊", symbol: "t", color: "#b0b0d0", clan: "outcasts",
     hp: 50, hpPerDepth: 6, attackMin: 8, attackMax: 16, attackPerDepth: 1, speed: 1.5,
     xp: 7, xpPerDepth: 1,
     dropChance: 0.06, bookDropChance: 0.01,
@@ -154,7 +154,7 @@ const MONSTER_DATA = [
   },
   {
     // 隣に来ると膨らんで、次の行動で爆発する。先に倒すか、離れる
-    id: "bomber", name: "爆ぜ虫", symbol: "b", color: "#e0e040",
+    id: "bomber", name: "爆ぜ虫", symbol: "b", color: "#e0e040", clan: "outcasts",
     hp: 60, hpPerDepth: 8, attackMin: 10, attackMax: 20, attackPerDepth: 4, speed: 1,
     xp: 10, xpPerDepth: 2,
     dropChance: 0.05, bookDropChance: 0.01,

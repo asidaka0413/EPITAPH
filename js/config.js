@@ -4,11 +4,14 @@
 // ==================== ゲームバランス設定 ====================
 const BALANCE = {
   // ダンジョンの階層。until 階までがその層。goalDepth 階の階段を降りると踏破(ゴール)
+  //   enemySlope:その層での、敵の「1階ごとの上がり幅」の倍率(深い層ほど、1階降りるごとに強くなる量が大きい)
+  //   enemyBoost:その層の敵のHP・攻撃力にかける倍率(層に入った瞬間に、一段強くなる)
+  //   深い層は、やりこんだ前提の強さにするため(中層から下の数値は仮)
   layers: [
-    { name: "低層",   until: 50 },
-    { name: "中層",   until: 100 },
-    { name: "深層",   until: 150 },
-    { name: "最深層", until: 200 },
+    { name: "低層",   until: 50,  enemySlope: 1,   enemyBoost: 1 },
+    { name: "中層",   until: 100, enemySlope: 1.5, enemyBoost: 1.2 },
+    { name: "深層",   until: 150, enemySlope: 2,   enemyBoost: 1.4 },
+    { name: "最深層", until: 200, enemySlope: 3,   enemyBoost: 1.6 },
   ],
   goalDepth: 200,
 
@@ -61,13 +64,13 @@ const BALANCE = {
   bookExchangeCost: 3,    // 1つ上のレベルの書と交換するのに必要な冊数
 
   // 敵の種類・強さは monsters.js に書く
-  // 敵の強さの段階的な上乗せ(monsters.js の hpPerDepth / attackPerDepth とは別に、掛け算でかかる)
-  //   enemyGrowthFromFloor 階から、enemyTierFloors 階ごとに一段階強くなる(11〜15階は段階1、16〜20階は段階2 …)
-  //   装備やキャンプ強化・刻印でプレイヤーが強くなりすぎるので、深い階の敵が追いつけるようにするため
-  enemyGrowthFromFloor: 11,
-  enemyTierFloors: 5,
-  enemyHpGrowthPerTier: 0.2,     // 一段階ごとに、敵のHPが +20% ずつ増える
-  enemyAttackGrowthPerTier: 0.3, // 一段階ごとに、敵の攻撃力が +30% ずつ増える(矢・炎・爆発・毒も)
+  // 敵の強さの伸び方:1階深くなるごとに、monsters.js の hpPerDepth / attackPerDepth ずつ足していく(まっすぐ伸びる)
+  //   enemySteepFromFloor 階からは、1階ごとの上がり幅が大きくなる(装備やキャンプ強化・刻印で強くなるプレイヤーに追いつくため)
+  //   さらに層ごとに、上がり幅の倍率(layers の enemySlope)と、層に入ったときの段差(enemyBoost)がかかる
+  //   いまの値は「40階で、前の作り(5階ごとに掛け算で強くなる形)とだいたい同じ強さ」になるようにしてある
+  enemySteepFromFloor: 11,
+  enemySteepHp: 2.8,      // その階からの、HPの上がり幅の倍率(hpPerDepth の何倍ずつ増えるか)
+  enemySteepAttack: 4.1,  // その階からの、攻撃力の上がり幅の倍率(矢・炎・爆発・毒も)
   // ドラゴンの攻撃(どの敵がどう使うかは monsters.js の ability: { type: "dragon", … })
   breathFalloff: 0.15,      // ブレスのダメージが、口から1マス離れるごとに下がる割合(1マス目100% → 2マス目85% …)
   ballSpeed: 2,             // 属性の球が1ターンに進むマス数
