@@ -68,6 +68,9 @@ const BALANCE = {
   enemyTierFloors: 5,
   enemyHpGrowthPerTier: 0.2,     // 一段階ごとに、敵のHPが +20% ずつ増える
   enemyAttackGrowthPerTier: 0.3, // 一段階ごとに、敵の攻撃力が +30% ずつ増える(矢・炎・爆発・毒も)
+  // ドラゴンの攻撃(どの敵がどう使うかは monsters.js の ability: { type: "dragon", … })
+  breathFalloff: 0.15,      // ブレスのダメージが、口から1マス離れるごとに下がる割合(1マス目100% → 2マス目85% …)
+  ballSpeed: 2,             // 属性の球が1ターンに進むマス数
   monsterSightRange: 8,     // この距離(マス数)以内にプレイヤーがいると追いかけてくる
   monsterWanderChance: 0.3, // プレイヤーが遠いとき、1ターンにうろつく確率
 
@@ -75,6 +78,50 @@ const BALANCE = {
   fieldItemsMin: 1, fieldItemsMax: 2, // 1フロアに落ちている装備の数(回復薬は床には落ちていない)
   potionHeal: 100,          // 回復薬1個で回復する量の最低値
   potionHealRatio: 0.3,     // 回復薬1個で、最大HPのこの割合だけ回復する(potionHeal より少なければ potionHeal)
+
+  // 階段の道(階段を降りるたびに選ぶ。道の種類は dungeon.js の STAIR_ROUTES)。効果は次の1階だけ
+  routeExtraMin: 1, routeExtraMax: 2, // 「ふつうの道」のほかに出る道の数(この間のランダム)
+  // 険しい道:敵のHP・攻撃力の倍率 / 敵がいる確率の倍率 / 素材の倍率 / 固有装備のドロップ率の倍率
+  routeRough: { enemyHp: 1.3, enemyAttack: 1.3, spawnRate: 1.25, materialRate: 2, dropRate: 2 },
+  // 静かな道:敵がいる確率の倍率 / 床に落ちている装備の数
+  routeQuiet: { spawnRate: 0.5, itemsMin: 0, itemsMax: 1 },
+  routeHoleFloors: 3,     // 深い穴で一気に落ちる階数(途中にエリートの階があれば、そこで止まる)
+
+  // 酒場の依頼(依頼の型は js/quests.js の QUEST_TYPES)。報酬はゴールド
+  questBoardSize: 5,        // 掲示板に並ぶ普通の依頼の数
+  questMaxAccepted: 3,      // 同時に受けられる普通の依頼の数(特殊依頼は別にもう1つ)
+  specialQuestChance: 0.35, // 掲示板が新しくなるとき、特殊依頼が1つ出る確率
+  questBigChance: 0.2,      // 普通の依頼が「大口」になる確率(数が多い・階が深い代わりに、報酬が多い)
+  questBigCount: 1.5,       // 大口の討伐数の倍率
+  questBigDepth: 5,         // 大口の到達の階の上乗せ
+  questBigReward: 1.5,      // 大口の報酬の倍率
+  questSpecialReward: 2,    // 特殊依頼の報酬の倍率
+  questGoldPerDepth: 0.1,   // 報酬が、依頼の階が1階深いごとに増える割合
+  questGoldSpread: 0.15,    // 報酬のブレ(±15%)
+  // 依頼の型ごとの報酬のもと(これ × 数や階 × 深さの倍率)
+  questGold: { kill: 10, clanKill: 8, reach: 12, elite: 150, noPotion: 20, sneak: 15, rough: 100 },
+
+  // 道具屋(品ぞろえと道具の効果は js/shop.js)
+  shopBuildCost: { plant: 40, hide: 25, bone: 5 }, // 道具屋を建てる素材(5階までに出る敵から集まるもの)
+  carrySlots: 3,            // 冒険に持ちこめる道具の枠の数(投げナイフ10本で1枠)
+  smokeRadius: 5,           // 煙玉:この距離(マス)以内の敵がこちらを見失う
+  smokeBlindTurns: 3,       // 煙玉:見失った敵が、また気づけるようになるまでの行動回数
+  knifeRange: 8,            // 投げナイフ:届く距離(マス)
+  knifePowerRate: 0.6,      // 投げナイフ:ATK に対するダメージの割合(気づいていない敵には不意打ちで2倍)
+  whetstoneAtk: 0.2,        // 砥石:その階のあいだ ATK がこの割合だけ上がる
+  frenzyAtk: 1.3,           // 狂熱の香薬:その階のあいだの攻撃力の倍率
+  frenzyTaken: 1.25,        // 狂熱の香薬:その階のあいだの、受けるダメージの倍率
+  stealthFloorsMin: 1, stealthFloorsMax: 3, // 忍び足の香:効く階の数(使うたびにこの間のランダム)
+  stealthSightRate: 0.5,    // 忍び足の香:効いているあいだの、敵の見える距離の倍率
+  firebombRange: 8,         // 火炎瓶:届く距離(マス)
+  firebombPowerRate: 0.8,   // 火炎瓶:ATK に対するダメージの割合(当たった場所の周り3×3の敵全部に)
+
+  // 鍛冶屋(作れる装備・腕前の段階は js/smithy.js)
+  smithBuildCost: { hide: 40, bone: 20, ore: 20 }, // 鍛冶屋を建てる素材(10階くらいまでに集まる素材)
+  smithQuality: 0.6,        // 鍛冶屋の装備の性能(1〜5階の床の装備のもとの何割か)
+  smithGrowthPerLevel: 0.15, // 腕前が1段階上がるごとに、性能が「もとの何割」ぶん増えるか(最後まで上げても 0.6 + 0.15×4 = 0.96。上がりすぎないように)
+  smithOrderGold: 30,       // 1つ注文するのに使うゴールド(腕前が1段階上がるごとに、この分ずつ増える)
+  smithOrderResource: 3,    // 1つ注文するのに使う、その部位の素材(腕前が1段階上がるごとに +2)
 
   // キャンプ(階段を降りるたびに1つ選べる)
   campHealRatio: 0.5,     // 「休む」で回復するHP(最大HPに対する割合)
@@ -90,7 +137,18 @@ const BALANCE = {
   cursedStatBonus: 0.5,     // 呪われた装備の基礎値の上乗せ(0.5 なら +50%)
   cursedRollSpread: 0.3,    // 呪いの重さのブレ。良い効果の強さに近い重さになるが、この幅だけずれる
 
+  shieldBlockMax: 90,     // 盾で防ぐ% の上限(ゴブリン一族のセット効果などで増えても、ここまで)
   materialRatio: 1 / 5,   // 刻んだとき、装備の性能のうち刻印になる割合
+  // 床の装備などから刻んだ刻印のレア度(名前が変わる)。刻んだ装備の個体差(各ステータスの±%)の平均で決める
+  //   上から順に見て、平均が minRoll(%)以上の最初のものになる。名前は「word + 部位 + の刻印」(例:輝く胴の刻印)
+  //   呪われた装備の基礎値の上乗せ(+50%)は関係なく、個体差だけで決める
+  //   敵の固有装備から刻んだ刻印は、equipment.js の materialName(その装備だけの名前)になる
+  materialRanks: [
+    { rank: "極", word: "輝く",     minRoll: 14 },
+    { rank: "上", word: "鮮やかな", minRoll: 7 },
+    { rank: "良", word: "確かな",   minRoll: 0 },
+    { rank: "並", word: "かすれた", minRoll: -Infinity },
+  ],
   refineBase: 1,          // 死んだときに刻める数(エリートを倒すと1体につき+1)
 
   // 刻印の強化(拠点の「制作」。素材を使う)
@@ -100,6 +158,12 @@ const BALANCE = {
   enhanceCostBase: 3,       // +0 → +1 に必要な素材の数
   enhanceCostPerPlus: 2,    // +1 上がるごとに増える、必要な素材の数(+0→+1 は 3個、+1→+2 は 5個 …)
   specialEnhanceCostMultiplier: 2, // 効果つき(呪い・浄化)の刻印は、強化に使う素材がこの倍
+
+  // 解体(サルベージ):刻印を素材に戻す。戻るのは「刻印の価値」× salvageRate
+  //   刻印の価値 = salvageBaseValue(合成したものは2個分)+ 強化に使った素材の合計
+  salvageRate: 0.5,
+  salvageBaseValue: 6,
+  leftoverSalvageAmount: 1, // 冒険の終わりに、刻まなかった装備1個から戻る素材の数(その部位の素材)
 
   // 浄化(刻印の呪いを消す。呪い1つにつき聖水1個)
   holyWaterDropChance: 0.05, // エリートを倒したときに聖水を落とす確率(運で少し上がる)
@@ -167,7 +231,7 @@ const INV_TABS = [
   { id: "status",   name: "ステータス" }, // 見るだけ
   { id: "trait",    name: "特性" },       // 見るだけ
   { id: "material", name: "素材" },   // 素材(拠点に持ち帰っている数を見るだけ)
-  { id: "other",    name: "その他" }, // まだ何もない(今後追加予定)
+  // 「その他」タブは中身がないので外した(使い道ができたら戻す)
 ];
 
 const STAT_NAMES = { hp: "HP", atk: "ATK", def: "DEF", luk: "LUK", agl: "AGL", crt: "CRT" };

@@ -5,7 +5,8 @@ body {
 }
 .layout { display: flex; gap: 16px; align-items: flex-start; }
 .main { display: flex; flex-direction: column; gap: 12px; }
-.side { width: 460px; display: flex; flex-direction: column; gap: 12px; }
+/* 右側の列は幅を固定する(長いログなどで、横に伸びないように。min-width: 0 で中身に押し広げられないようにする) */
+.side { width: 460px; flex: 0 0 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .panel { background: #14141b; border: 1px solid #2c2c38; border-radius: 6px; padding: 10px 14px; }
 .panel-title { color: #8a8aa0; font-size: 13px; margin-bottom: 8px; letter-spacing: 0.1em; }
 
@@ -15,7 +16,9 @@ body {
 /*   #screen の大きさは文字数(ch)で決めるので、フォントは画面を切り替えても変えない(中身の .text-body だけ変える) */
 #screen { font-size: 16px; overflow-y: auto; font-family: Consolas, "BIZ UDGothic", "MS Gothic", monospace; }
 #screen.map-mode { white-space: pre; line-height: 1.15; overflow: hidden; }
-#screen.text-mode { line-height: 1.8; }
+/*   文字の画面では、スクロールバーの場所をいつも空けておく(長いページだけスクロールバーが出て、幅が変わらないように)
+     マップの画面では空けない(空けるとマップの右端が欠けるため) */
+#screen.text-mode { line-height: 1.8; scrollbar-gutter: stable; }
 .text-body { font-family: "BIZ UDGothic", "BIZ UDゴシック", "Yu Gothic UI", Meiryo, monospace; font-size: 15px; }
 
 /* 表の形の一覧(列の幅をそろえる)。列の幅は行ごとに style で指定する */
@@ -37,7 +40,7 @@ body {
 .equip-mat { font-size: 12px; }
 
 #log, #screen { scrollbar-color: #444 #14141b; } /* スクロールバーを画面の色に合わせる */
-#log { height: 260px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
+#log { height: 260px; overflow-y: auto; overflow-x: hidden; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; } /* 長い行は、どこででも折り返す */
 .log-new { color: #ffe066; }
 .log-old { color: #777; }
 
@@ -62,6 +65,18 @@ kbd {
 .game-title { font-family: Consolas, monospace; font-size: 30px; letter-spacing: 0.45em; color: #c8c0a8;
               text-align: center; margin: 18px 0 22px; padding: 0 0 14px 0.45em; /* 左の padding は字間の分を打ち消して中央にするため */
               border-bottom: 1px solid #2c2c38; }
+/* 右側の「依頼」欄と、酒場 */
+#quests { font-size: 13px; line-height: 1.6; }
+.quest-row { display: flex; gap: 6px; align-items: baseline; }
+.quest-state { margin-left: auto; white-space: nowrap; }              /* 進み具合は右寄せ */
+.gold { color: #ffd84d; letter-spacing: 0; margin-left: 6px; }        /* 持っているゴールド */
+.quest-tag { border-radius: 3px; padding: 0 4px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+.quest-tag.big { color: #000; background: #ffae42; }                  /* 大口 */
+.quest-tag.special { color: #fff; background: #a04ad0; }              /* 特殊依頼 */
+
+/* 遊び方 */
+.help-head { font-weight: bold; color: #ffd84d; margin: 10px 0 2px; }
+.help-line { padding-left: 1em; font-size: 14px; line-height: 1.7; white-space: pre-wrap; } /* pre-wrap:行頭の空白(字下げ)を残す */
 .dex { display: grid; grid-template-columns: 13em 1fr; gap: 12px; }
 .dex-list { border-right: 1px solid #2c2c38; padding-right: 8px; }
 /* 説明は、一覧を下までスクロールしても画面の上に残るようにする(sticky:スクロールしてもその位置にとどまる) */
@@ -84,9 +99,31 @@ kbd {
 #debug .toggle { border-radius: 4px; }
 
 /* 持ち物画面のタブ */
-.tabs { display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 1px solid #2c2c38; }
-.tab { padding: 2px 14px; color: #777; border-radius: 4px 4px 0 0; }
+/* タブが多くて入りきらないときは、横にスクロールする(選んでいるタブが見えるよう、画面を描くたびに自動でスクロール) */
+.tabs { display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 1px solid #2c2c38;
+        position: relative; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.tabs > .tab { flex-shrink: 0; } /* タブを縮めない(入りきらない分はスクロールで見る) */
+.tab { padding: 2px 14px; color: #777; border-radius: 4px 4px 0 0; white-space: nowrap; } /* タブの名前の途中では改行しない */
 .tab.active { color: #fff; background: #262636; border-bottom: 2px solid #ffd84d; }
+
+/* マップにマウスを合わせたときの詳細ウィンドウ(ツールチップ)。マウスの邪魔をしないよう pointer-events: none */
+#tooltip {
+  display: none; position: fixed; z-index: 100; pointer-events: none; min-width: 240px; max-width: 340px;
+  background: #1b1b24; border: 1px solid #44445a; border-radius: 6px; padding: 6px 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  font-family: "BIZ UDGothic", "BIZ UDゴシック", "Yu Gothic UI", Meiryo, monospace; font-size: 14px; line-height: 1.6;
+}
+.tip-title { font-weight: bold; margin-bottom: 4px; display: flex; align-items: baseline; gap: 6px; }
+.tip-head-right { margin-left: auto; padding-left: 12px; font-weight: normal; white-space: nowrap; } /* 見出しの右側(印・一族の札) */
+.tip-line { margin-top: 2px; }
+.tip-line .bar { margin: 1px 0 4px; }
+.tip-row { display: flex; flex-wrap: wrap; gap: 2px 14px; }       /* 攻撃・速さ・向きを横に並べる */
+.tip-row > span { white-space: nowrap; }                           /* 1つの項目の途中では改行しない */
+.tip-sub { color: #8a8a99; font-size: 12.5px; }
+.tip-badge { border-radius: 3px; padding: 0 5px; font-size: 12px; font-weight: bold; white-space: nowrap; }
+.tip-badge.calm { color: #0c2a12; background: #6fcf7f; }           /* 気づいていない(不意打ちできる) */
+.tip-badge.alert { color: #fff; background: #b03030; }             /* 気づいている */
+.elite-tag { color: #ffd700; }
 
 /* 色 */
 .dim { color: #777; }
@@ -105,7 +142,13 @@ kbd {
 .grave { color: #d8d0b8; font-weight: bold; }                    /* 前の自分の墓 */
 .dormant { opacity: 0.55; }                                       /* 眠っている墓守 */
 .flame { color: #ff8030; font-weight: bold; }                     /* 鬼火の炎 */
+.ball { font-weight: bold; }                                      /* ドラゴンの属性の球(色は属性ごとに style で指定) */
+.danger { background: #6a1414; }                                  /* ブレスが当たる範囲(溜めているあいだ赤く光る) */
+.atk { background: #3e1a1a; }                                     /* F キー:敵の攻撃が届く範囲(薄い赤) */
+.vis { background: #2e2a14; }                                     /* F キー:気づいていない敵の視界(薄い黄色) */
 .poison { color: #b060d0; font-weight: bold; }                    /* 毒 */
+.burn { color: #ff7a40; font-weight: bold; }                      /* やけど */
+.route { color: #e0c070; }                                        /* この階に来るときに選んだ道 */
 .potion { color: #ff77cc; }
 .armor { color: #55ccff; }
 .ring { color: #ffd84d; }
@@ -113,6 +156,11 @@ kbd {
 .weapon { color: #88bbff; }
 .shield { color: #b0c4de; }
 .mat { color: #5fd7d7; }
+/* 刻印の名前・一族の名前は、言葉の途中で改行しない(長いときは、言葉の切れ目で次の行に送る) */
+.mat-name { color: #5fd7d7; font-weight: bold; white-space: nowrap; } /* 刻印の名前 */
+.clan-tag { color: #e8c890; white-space: nowrap; }                    /* 一族の名前(色は一族ごとに style で指定) */
+/* 一族の札(刻印の名前の横)。背景の色は一族ごとに style で指定 */
+.clan-badge { color: #111; border-radius: 3px; padding: 0 4px; font-size: 12px; white-space: nowrap; }
 .book { color: #ffae42; font-weight: bold; }
 .trait-on { color: #ffae42; }
 .bless { color: #7fd6a0; }   /* 呪われた装備の良い効果 */

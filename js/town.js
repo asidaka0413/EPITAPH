@@ -4,29 +4,44 @@
 // ==================== 拠点 ====================
 // 拠点のメニュー。項目を増やすときはここに足す
 //   id:画面の名前 / name:表示名 / summary:メニューの右側に出す一言
+//   gapAfter:true なら、そのあとに少しすき間をあける(潜る / 潜る前の準備 / そのほか のまとまりに分ける)
 const TOWN_MENU = [
-  { id: "dive",     name: "ダンジョンに潜る",
-    summary: () => base.records.runs === 0 ? `目指すは地下${BALANCE.goalDepth}階`
-      : `最高 ${depthLabel(base.records.bestDepth)}${base.records.clears > 0 ? `　踏破 ${base.records.clears}回` : ""}`
-        + `${base.grave && base.grave.relic && !base.grave.relicTaken ? `　墓 地下${base.grave.depth}階` : ""}` },
+  { id: "dive",     name: "ダンジョンに潜る", gapAfter: true,
+    // 1行目:記録と墓 / 2行目:潜る前の確認(受けている依頼・持ちこむ道具・セットしている刻印。忘れに気づけるように)
+    summary: () => {
+      const rec = base.records.runs === 0 ? `目指すは地下${BALANCE.goalDepth}階`
+        : `最高 ${depthLabel(base.records.bestDepth)}${base.records.clears > 0 ? `　踏破 ${base.records.clears}回` : ""}`
+          + `${base.grave && base.grave.relic && !base.grave.relicTaken ? `　墓 地下${base.grave.depth}階` : ""}`;
+      const tools = base.shop.built ? `　道具 ${base.carry.filter(c => c).length}/${BALANCE.carrySlots}` : "";
+      return `${rec}\n依頼 ${base.quests.accepted.length}${tools}　刻印 ${Object.keys(base.materialSet).length}/${Object.keys(EQUIP_SLOTS).length}`;
+    } },
   { id: "player",   name: "プレイヤー",
     summary: () => `Lv.${base.level}　スキルポイント ${base.skillPoints}　刻印 ${Object.keys(base.materialSet).length}/${Object.keys(EQUIP_SLOTS).length}`,
     hasNew: () => PLAYER_TABS.some(tab => tab.hasNew()) }, // hasNew:NEW の印を付けるか(省略できる)
-  { id: "craft",    name: "制作",   summary: () => "刻印の強化・合成・浄化、書の交換" },
+  { id: "tavern",   name: "酒場",
+    summary: () => `所持 ${base.gold}G　受けている依頼 ${base.quests.accepted.length}` },
+  { id: "shop",     name: "道具屋",
+    summary: () => base.shop.built ? `持ちこみ枠 ${base.carry.filter(c => c).length}/${BALANCE.carrySlots}` : "まだない(素材で建てられる)" },
+  { id: "smithy",   name: "鍛冶屋",
+    summary: () => base.smithy.built ? `注文 ${Object.keys(base.smithOrders).length}/${Object.keys(EQUIP_SLOTS).length}　腕前 ${smithQualityText(base.smithy.level)}` : "まだない(素材で建てられる)" },
+  { id: "craft",    name: "制作",   summary: () => "刻印の強化・合成・解体・浄化", gapAfter: true },
   { id: "dex",      name: "図鑑",
     summary: () => DEX_TABS.map(t => `${t.name} ${dexCount(t.id)}/${dexEntries(t.id).length}`).join("　") },
+  { id: "help",     name: "遊び方",
+    summary: () => base.records.runs === 0 ? "はじめての人は、まずここ" : "操作と仕組みの説明" },
   { id: "settings", name: "設定",   summary: () => "" },
 ];
 
-// 制作のタブ
+// 制作のタブ(よく使う順。浄化は聖水がないとできないので後ろ)。制作は「刻印をいじる場所」
+//   書の交換は、プレイヤー画面の「書」タブにある
 const CRAFT_TABS = [
   { id: "enhance", name: "強化" },
   { id: "fuse",    name: "合成" },
+  { id: "salvage", name: "解体" },
   { id: "purify",  name: "浄化" },
-  { id: "book",    name: "書の交換" },
 ];
 
-// 制作(強化・合成・浄化)で並べる刻印の種類(武器・盾・頭・胴・腰・足・指輪・イヤリング)
+// 制作(強化・合成・浄化・解体)で並べる刻印の種類(武器・盾・頭・胴・腰・足・指輪・イヤリング)
 const CRAFT_TYPES = Object.keys(ITEM_TYPES);
 
 // その種類の刻印(手に入れた順。強化してもカーソルの位置がずれないように、並べ替えない)
@@ -34,7 +49,7 @@ function materialsOfType(type) {
   return base.materials.filter(mat => mat.slot === type);
 }
 
-// 種類を選んだあとの一覧:強化はその種類の全部、合成はまだ合成していないもの、浄化は呪いつきのものだけ
+// 種類を選んだあとの一覧:強化・解体はその種類の全部、合成はまだ合成していないもの、浄化は呪いつきのものだけ
 function craftMatList() {
   const list = materialsOfType(craftType);
   const tab = CRAFT_TABS[craftTab].id;
@@ -46,11 +61,6 @@ function craftMatList() {
 // 制作画面で Enter
 function craftEnter() {
   const tab = CRAFT_TABS[craftTab].id;
-  if (tab === "book") {
-    const r = bookRecipes()[townCursor];
-    if (r) exchangeBook(r);
-    return;
-  }
   // 1段目:種類を選ぶ
   if (!craftType) {
     craftType = CRAFT_TYPES[townCursor];
@@ -65,6 +75,9 @@ function craftEnter() {
   } else if (tab === "purify") {
     purifyMaterial(mat);
     craftPickCursor = Math.max(0, Math.min(craftPickCursor, craftMatList().length - 1)); // 浄化したものは一覧から消える
+  } else if (tab === "salvage") {
+    salvageMaterial(mat);
+    craftPickCursor = Math.max(0, Math.min(craftPickCursor, craftMatList().length - 1)); // 解体したものは一覧から消える
   } else if (!fuseFirst) {
     fuseFirst = mat; // 1個目を選んだ → 2個目を選ぶ
   } else if (mat === fuseFirst) {
@@ -80,9 +93,8 @@ function craftEnter() {
 
 // 制作画面のキー操作
 function craftKey(e) {
-  const tab = CRAFT_TABS[craftTab].id;
   // 2段目:種類を選んだあとの刻印の一覧
-  if (tab !== "book" && craftType) {
+  if (craftType) {
     const count = craftMatList().length;
     if (e.key === "ArrowUp") craftPickCursor = Math.max(0, craftPickCursor - 1);
     else if (e.key === "ArrowDown") craftPickCursor = Math.max(0, Math.min(count - 1, craftPickCursor + 1));
@@ -94,8 +106,8 @@ function craftKey(e) {
     render();
     return;
   }
-  // 1段目:種類の一覧(書の交換はレシピの一覧)
-  const rows = tab === "book" ? bookRecipes().length : CRAFT_TYPES.length;
+  // 1段目:種類の一覧
+  const rows = CRAFT_TYPES.length;
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     craftTab = (craftTab + (e.key === "ArrowRight" ? 1 : -1) + CRAFT_TABS.length) % CRAFT_TABS.length;
     townCursor = 0;
@@ -137,10 +149,12 @@ function dexCount(tab) {
 }
 
 // プレイヤー画面のタブ。hasNew:タブに NEW の印を付けるか
+//   並び:見るだけ(ステータス・特性)→ 潜る前の準備(道具・刻印)→ 育てる(書・スキル)
 const PLAYER_TABS = [
   { id: "status",   name: "ステータス", hasNew: () => false },
   { id: "trait",    name: "特性",       hasNew: () => false },
-  { id: "material", name: "刻印", hasNew: () => base.materials.some(mat => mat.isNew) },
+  { id: "tools",    name: "道具",       hasNew: () => false }, // 冒険に持ちこむ道具(js/shop.js)
+  { id: "material", name: "刻印",       hasNew: () => base.materials.some(mat => mat.isNew) },
   { id: "book",     name: "書",         hasNew: () => Object.keys(base.bookNew).length > 0 },
   { id: "skill",    name: "スキル",     hasNew: () => false },
 ];
@@ -149,8 +163,9 @@ const PLAYER_TABS = [
 function playerTabRows() {
   const tab = PLAYER_TABS[playerTab].id;
   if (tab === "material") return townSlots().length;
-  if (tab === "book") return BALANCE.bookSlots;
+  if (tab === "book") return BALANCE.bookSlots + bookRecipes().length; // 書の枠のあとに、書の交換のレシピ
   if (tab === "skill") return setBooks().length;
+  if (tab === "tools") return base.shop.built ? BALANCE.carrySlots : 0;
   return 0; // ステータス・特性は見るだけ
 }
 
@@ -269,6 +284,7 @@ function townMenuEnter() {
 function closeTownPickers() {
   townPickSlot = null;
   townPickBook = null;
+  townPickTool = null;
   townAllocating = false;
   craftType = null;
   fuseFirst = null;
@@ -281,6 +297,7 @@ function goToTown() {
   townPage = "menu";
   townMenuCursor = 0;
   closeTownPickers();
+  refreshQuestBoard(); // 冒険から戻ったら、酒場の掲示板が新しくなる(まだ作っていなければ)
 }
 
 // 拠点の各画面から、メニューに戻る
@@ -328,6 +345,34 @@ function townKey(e) {
     return;
   }
 
+  if (townPage === "tavern") {
+    tavernKey(e);
+    return;
+  }
+
+  if (townPage === "shop") {
+    shopKey(e);
+    return;
+  }
+
+  if (townPage === "smithy") {
+    smithyKey(e);
+    return;
+  }
+
+  // 遊び方:←→ でタブ、↑↓ で説明をスクロール
+  if (townPage === "help") {
+    const screenEl = document.getElementById("screen");
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      helpTab = (helpTab + (e.key === "ArrowRight" ? 1 : -1) + HELP_PAGES.length) % HELP_PAGES.length;
+      render();
+      screenEl.scrollTop = 0; // タブを替えたら、いちばん上から
+    } else if (e.key === "ArrowUp") screenEl.scrollTop -= 60;
+    else if (e.key === "ArrowDown") screenEl.scrollTop += 60;
+    else if (e.key === "Escape") backToTownMenu();
+    return;
+  }
+
   if (townPage === "settings") {
     if (e.key === "ArrowUp") townCursor = Math.max(0, townCursor - 1);
     else if (e.key === "ArrowDown") townCursor = Math.min(TOWN_SETTINGS.length - 1, townCursor + 1);
@@ -370,6 +415,12 @@ function playerKey(e) {
     return;
   }
 
+  // 持ちこむ道具を選んでいる最中
+  if (townPickTool !== null) {
+    carryPickerKey(e);
+    return;
+  }
+
   // スキルにポイントを振っている最中(振ったらすぐ反映。Enter / Esc で終わってセーブ)
   if (townAllocating) {
     if (e.key === "ArrowRight") allocSelected(1);
@@ -392,11 +443,21 @@ function playerKey(e) {
     townCursor = Math.max(0, Math.min(playerTabRows() - 1, townCursor + 1));
   } else if (e.key === "Enter") {
     if (tab === "material") { openMaterialPicker(); return; }
-    if (tab === "book") {
+    if (tab === "book" && townCursor < BALANCE.bookSlots) {
+      // 書の枠:セットする書を選ぶ
       townPickBook = townCursor;
       townPickCursor = Math.max(0, bookChoices().map(b => b && b.id).indexOf(base.bookSet[townCursor]));
+    } else if (tab === "book") {
+      // 書の交換のレシピ
+      const r = bookRecipes()[townCursor - BALANCE.bookSlots];
+      if (r) exchangeBook(r);
     }
     if (tab === "skill" && setBooks().length > 0) townAllocating = true;
+    if (tab === "tools" && base.shop.built) {
+      townPickTool = townCursor;
+      const cur = base.carry[townCursor];
+      townPickCursor = Math.max(0, carryChoices().indexOf(cur ? cur.id : null));
+    }
   } else if (e.key === "Escape") {
     backToTownMenu();
     return;

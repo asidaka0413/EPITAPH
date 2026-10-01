@@ -22,6 +22,10 @@
       <div class="panel-title">装備</div>
       <div id="equip"></div>
     </div>
+    <div class="panel" id="quest-panel">
+      <div class="panel-title">依頼 <span id="gold" class="gold"></span></div>
+      <div id="quests"></div>
+    </div>
     <div class="panel">
       <div class="panel-title">ログ</div>
       <div id="log"></div>
@@ -39,11 +43,16 @@
     </div>
   </div>
 </div>
-<!-- データ(敵・装備・書・効果を増やすときは data/ の中のファイルを書き換える) -->
+<!-- マップにマウスを合わせたときに出す詳細ウィンドウ(中身は js/tooltip.js で入れる) -->
+<div id="tooltip"></div>
+<!-- データ(敵・装備・書・効果・一族を増やすときは data/ の中のファイルを書き換える) -->
 <script src="data/equipment.js"></script>
 <script src="data/monsters.js"></script>
 <script src="data/books.js"></script>
 <script src="data/effects.js"></script>
+<script src="data/sets.js"></script>
+<script src="data/elements.js"></script>
+<script src="data/help.js"></script>
 <!-- プログラム(この順番で読み込む。後のファイルは前のファイルの関数や変数を使う) -->
 <script src="js/config.js"></script>
 <script src="js/util.js"></script>
@@ -55,7 +64,11 @@
 <script src="js/combat.js"></script>
 <script src="js/screens.js"></script>
 <script src="js/town.js"></script>
+<script src="js/quests.js"></script>
+<script src="js/shop.js"></script>
+<script src="js/smithy.js"></script>
 <script src="js/debug.js"></script>
+<script src="js/tooltip.js"></script>
 <script src="js/input.js"></script>
 </body>
 </html>

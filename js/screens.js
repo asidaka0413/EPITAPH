@@ -2,8 +2,13 @@
 // index.html から <script src> で読み込まれる(読み込む順番は index.html に書いてある)
 
 // ==================== 描画 ====================
+// 冒険中の画面か(ダンジョン・持ち物・道を選ぶ・キャンプ)。ステータス欄と装備欄を出す画面
+function inRunScreen() {
+  return ["dungeon", "inventory", "route", "camp"].includes(screenMode);
+}
+
 function render() {
-  const inDungeon = screenMode === "dungeon" || screenMode === "inventory" || screenMode === "camp";
+  const inDungeon = inRunScreen();
   document.getElementById("status-panel").style.display = inDungeon ? "" : "none";
   document.getElementById("equip-panel").style.display = inDungeon ? "" : "none";
 
@@ -15,6 +20,8 @@ function render() {
     drawRefine();
   } else if (screenMode === "inventory") {
     drawInventory();
+  } else if (screenMode === "route") {
+    drawRoute();
   } else if (screenMode === "camp") {
     drawCamp();
   } else {
@@ -25,8 +32,10 @@ function render() {
     drawEquip();
   }
   drawLog();
+  drawQuestPanel(); // 右側の「依頼」欄(いつでも出す)
   drawSettings();
   drawDebug();
+  updateTooltip(); // マウスを合わせたままでも、敵が動いたら詳細ウィンドウの中身を更新する
 }
 
 // メイン画面の中身を差し替える(isMap が true ならマップ用の見た目)
@@ -35,6 +44,16 @@ function setScreen(title, html, isMap) {
   const el = document.getElementById("screen");
   el.className = isMap ? "map-mode" : "text-mode";
   el.innerHTML = isMap ? html : `<div class="text-body">${html}</div>`;
+  // タブの列が横に長いときは、選んでいるタブが見えるように横スクロールする(縦のスクロールは動かさない)
+  for (const tabs of el.querySelectorAll(".tabs")) {
+    const act = tabs.querySelector(".tab.active");
+    if (!act) continue;
+    const margin = 24; // となりのタブが少し見えるように、端から少し余白を空ける
+    if (act.offsetLeft - margin < tabs.scrollLeft) tabs.scrollLeft = act.offsetLeft - margin;
+    else if (act.offsetLeft + act.offsetWidth + margin > tabs.scrollLeft + tabs.clientWidth) {
+      tabs.scrollLeft = act.offsetLeft + act.offsetWidth + margin - tabs.clientWidth;
+    }
+  }
   // 選んでいる行が見えるように、一覧が長いときはスクロールする
   const sel = el.querySelector(".sel");
   if (sel) sel.scrollIntoView({ block: "nearest" });
@@ -71,8 +90,10 @@ function tileAt(x, y) {
   if (m) {
     if (m.primed) return [m.data.symbol, "monster primed", null]; // 膨らんだ爆ぜ虫(次に爆発する)
     if (m.elite) return [m.data.symbol, `monster elite${m.dormant ? " dormant" : ""}`, BALANCE.eliteColor]; // エリートは金色・下線(眠っている墓守は薄く)
-    return [m.data.symbol, "monster", m.data.color]; // 3つ目は敵ごとの色
+    return [m.data.symbol, "monster", monsterColor(m.data)]; // 3つ目は敵ごとの色(一族があれば一族の色)
   }
+  const ball = ballAt(x, y);
+  if (ball) return ["•", "ball", ELEMENT_DATA[ball.element].color]; // ドラゴンの属性の球(属性の色)
   if (flameAt(x, y)) return ["*", "flame"];
   if (stairs && x === stairs.x && y === stairs.y) return [">", stairsSealed() ? "stairs-sealed" : "stairs"];
   if (graveAt(x, y)) return ["†", "grave"]; // 前の自分の墓
@@ -86,21 +107,36 @@ function tileAt(x, y) {
   return [".", "floor"];
 }
 
+// F キーで切り替え。true のあいだ、敵の視界(薄い黄色)と攻撃が届く範囲(薄い赤)をマップに出す
+let threatView = false;
+
 function drawDungeon() {
+  const danger = dangerTiles(); // ドラゴンがブレスを溜めているときの、当たる範囲(赤く光らせる)
+  // F キー:全部の敵の視界と攻撃範囲を集める
+  const vision = new Set(), attack = new Set();
+  if (threatView) {
+    for (const m of monsters) {
+      monsterVisionTiles(m).forEach(t => vision.add(t));
+      monsterAttackTiles(m).forEach(t => attack.add(t));
+    }
+  }
+  // 重なったら、ブレスの範囲 > 攻撃範囲 > 視界 の順に優先
+  const overlay = key => danger.has(key) ? " danger" : attack.has(key) ? " atk" : vision.has(key) ? " vis" : "";
   let html = "";
   for (let y = 0; y < BALANCE.mapHeight; y++) {
     for (let x = 0; x < BALANCE.mapWidth; x++) {
       const tile = tileAt(x, y);
+      const cls = tile && `${tile[1]}${overlay(`${x},${y}`)}`;
       if (!tile) html += " ";
       // 壁は文字ではなく、マスいっぱいに塗りつぶしたブロックで描く(縦にもすき間なくつながるように)
       else if (tile[1] === "wall") html += `<span class="wall-block"> </span>`;
-      else if (tile[2]) html += `<span class="${tile[1]}" style="color:${tile[2]}">${esc(tile[0])}</span>`;
-      else html += span(tile[1], tile[0]);
+      else if (tile[2]) html += `<span class="${cls}" style="color:${tile[2]}">${esc(tile[0])}</span>`;
+      else html += span(cls, tile[0]);
     }
     html += "\n";
   }
   setScreen(depthLabel(depth), html, true);
-  setHint([["WASD / ↑↓←→", "移動・攻撃"], ["H", "回復薬"], ["E", "持ち物"], ["X 長押し", "自害"]]);
+  setHint([["WASD / ↑↓←→", "移動・攻撃"], ["H", "回復薬"], ["E", "持ち物"], ["Z / .", "待つ"], ["F", `敵の視界・攻撃範囲 ${threatView ? "ON" : "OFF"}`], ["X 長押し", "自害"]]);
 }
 
 // ゲージ(ratio は 0〜1)
@@ -119,10 +155,13 @@ function drawStatus() {
   const hpColor = hpRatio > 0.5 ? "#4cd964" : hpRatio > 0.25 ? "#ffcc00" : "#ff3b30";
   let h = "";
   h += `<div class="status-top"><span>${layerOf(depth).name} 地下 <b>${depth}</b> 階</span><span>Lv.<b>${base.level}</b></span><span>回復薬 ×${potions}</span>`;
+  if (floorRoute.id !== "normal") h += span("route", floorRoute.name); // この階に来るときに選んだ道
+  for (const label of buffLabels()) h += span("up", label);           // 道具の効き目(砥石・狂熱・忍び足)
   if (stairsSealed()) h += span("down", "階段 封印中");
-  if (playerPoison) h += span("poison", `毒 ${playerPoison.dmg}×${playerPoison.turns}`);
+  for (const kind in playerDots) h += span(DOT_TYPES[kind].cls, `${DOT_TYPES[kind].name} ${playerDots[kind].dmg}×${playerDots[kind].turns}`);
   if (playerWeak) h += span("poison", `衰弱 ${playerWeak.turns}`);
-  if (equipped.shield && equipped.shield.block) h += span("shield", `盾の向き ${facingArrow()}`);
+  if (playerSlow) h += span("poison", `鈍足 ${playerSlow.turns}`);
+  if (equipped.shield && equipped.shield.block) h += span("shield", `盾の向き ${facingArrow()}(防${shieldBlockPercent()}%)`);
   if (giveUpProgress() > 0) h += span("down", `自害… ${Math.round(giveUpProgress() * 100)}%`);
   h += `<span class="dim">刻める ${refineCount()}個</span></div>`;
   h += `<div>HP ${playerHP} / ${maxHP}</div>` + bar(hpRatio, hpColor, 10);
@@ -131,7 +170,7 @@ function drawStatus() {
   h += statCell("ATK", s.atk);
   h += statCell("DEF", s.def, `軽減${fmt(defCutPercent(s))}%`);
   h += statCell("LUK", s.luk, `運${fmt(luckPercent(s))}%`);
-  h += statCell("AGL", s.agl, `回避${fmt(evadePercent(s))}%`);
+  h += statCell("AGL", s.agl, `回避${fmt(evadePercent(s) * slowMultiplier())}%`); // 鈍足のあいだは下がる
   // 会心:抽選が複数回なら「実際に出る確率」と抽選回数を出す
   const rolls = critRolls();
   h += statCell("CRT", s.crt, `会心${fmt(critChanceTotal(s))}%${rolls > 1 ? `・${rolls}回抽選` : ""}`);
@@ -151,9 +190,10 @@ function drawEquip() {
     if (eq && eq.effects && eq.effects.length) content += `<div class="equip-mat">${effectsHTML(eq.effects, true)}</div>`;
     // 刻印は下の行に:装備を着けていれば効果あり(水色)、着けていなければ無効(灰色)
     if (mat) {
-      const matText = `◆ ${mat.plus > 0 ? `+${mat.plus} ` : ""}${statsText(mat.stats)}`;
+      const matText = `◆ ${mat.name ? `${mat.name} ` : ""}${mat.plus > 0 ? `+${mat.plus} ` : ""}${statsText(mat.stats)}`;
       const matFx = mat.effects && mat.effects.length ? " " + (eq ? effectsHTML(mat.effects, true) : span("dim", mat.effects.map(fx => effectText(fx, true)).join(" "))) : "";
-      content += `<div class="equip-mat">${eq ? span("mat", matText) : span("dim", `${matText}(装備なしで無効)`)}${matFx}</div>`;
+      const badges = materialClans(mat).map(c => " " + clanBadgeHTML(c)).join(""); // 一族の札
+      content += `<div class="equip-mat">${eq ? span("mat", matText) : span("dim", `${matText}(装備なしで無効)`)}${badges}${matFx}</div>`;
     }
     h += `<div class="equip-row"><span class="dim">${EQUIP_SLOTS[slot]}</span><span>${content}</span></div>`;
   }
@@ -254,10 +294,27 @@ function inventoryToolHTML() {
   list.forEach((tool, i) => {
     if (tool.kind === "potion") {
       h += gridRow(i === invCursor, "7em 3em 1fr", [
-        `${span("potion", "!")} 回復薬`, `×${potions}`, span("dim", `HPを${potionHealAmount()}回復する`)]);
+        `${span("potion", "!")} 回復薬`, `×${potions}`, span("dim", `HPを${potionHealAmount()}回復する。毒・やけども治る`)]);
+    } else if (tool.kind === "tool") {
+      // 道具屋で買って持ってきた道具
+      const t = runTools[tool.index];
+      const data = TOOL_DATA[t.id];
+      h += gridRow(i === invCursor, "7em 3em 1fr", [esc(data.name), `×${t.count}`, span("dim", data.desc)]);
     }
   });
   return h;
+}
+
+// 階段を降りたとき:次の階への道を選ぶ画面
+function drawRoute() {
+  let h = "";
+  h += `<div>階段を降りると、道が分かれていた。</div>`;
+  h += `<div class="note">どの道で進むか選ぶ。道の効果は次の1階だけ。このあとキャンプで一息つける</div>`;
+  routeChoices.forEach((r, i) => {
+    h += gridRow(i === routeCursor, "8em 1fr", [`<b>${esc(r.name)}</b>`, span("sub", r.desc())]);
+  });
+  setScreen("分かれ道", h, false);
+  setHint([["↑↓", "選ぶ"], ["Enter / Space", "この道を選んでキャンプへ"]]);
 }
 
 function drawCamp() {
@@ -267,7 +324,8 @@ function drawCamp() {
   }
   let h = "";
   h += `<div>階段の途中で、キャンプを見つけた。</div>`;
-  h += `<div class="note">ひとつだけ選んで、地下${depth + 1}階へ進もう。</div>`;
+  const route = nextRoute && nextRoute.id !== "normal" ? `(${nextRoute.name})` : "";
+  h += `<div class="note">ひとつだけ選んで、地下${nextDepth()}階へ進もう。${esc(route)}</div>`;
   CAMP_OPTIONS.forEach((opt, i) => {
     const ok = !opt.available || opt.available();
     const name = ok ? `<b>${esc(opt.name)}</b>` : span("dim", opt.name);
@@ -322,6 +380,7 @@ function drawResult() {
   h += row("倒したエリート", r.elitesKilled > 0 ? `${r.elitesKilled}体　${span("up", `刻める数 +${r.elitesKilled}`)}` : span("dim", "0体"));
   h += row("拾った装備", `${r.pickups}個　${span("dim", `(刻める数 ${refineCount()})`)}`);
   h += row("手に入れた素材", Object.keys(r.resources).length ? resourcesHTML(r.resources) : span("dim", "なし"));
+  h += row("依頼の報酬", r.gold ? span("up", `${r.gold}G`) : span("dim", "なし"));
   if (!r.cleared && base.grave) {
     const g = base.grave;
     h += row("墓", `${esc(depthLabel(g.depth))}に墓が建った　${span("dim", g.relic ? `遺品:${equipName(g.relic)}` : "遺品なし")}`);
@@ -329,7 +388,7 @@ function drawResult() {
   h += row("手に入れた書", r.books.length ? r.books.map(n => span("book", n)).join(" ") : span("dim", "なし"));
   h += `<br><div class="dim">これまで:冒険 ${base.records.runs}回 / 倒した敵 ${base.records.totalKills}体</div>`;
   setScreen("冒険の記録", h, false);
-  setHint([["Enter / Space", runPickups.length > 0 ? "刻む装備を選ぶ" : "拠点へ"]]);
+  setHint([["Enter / Space", refinablePickups().length > 0 ? "刻む装備を選ぶ" : "拠点へ"]]);
 }
 
 function drawRefine() {
@@ -370,7 +429,7 @@ function drawRefine() {
     // 装備中は左に着けていた枠(指輪1 など)
     h += gridRow(i === refineCursor, worn ? "6.5em 1fr" : "0 1fr", [
       span("dim", worn ? EQUIP_SLOTS[equippedSlotOf(eq)] : ""),
-      `${equipHTML(eq)}<div class="sub">${before}→ 刻印 ${span("mat", statsText(materialStats(eq)))}`
+      `${equipHTML(eq)}<div class="sub">${before}→ 刻印「${esc(materialNameFor(eq))}」 ${span("mat", statsText(materialStats(eq)))}`
         + `${eq.effects && eq.effects.length ? "(効果もそのまま引き継ぐ)" : ""}</div>`,
     ]);
   });
@@ -390,6 +449,10 @@ function drawTown() {
   else if (townPage === "craft") drawTownCraft();
   else if (townPage === "dex") drawTownDex();
   else if (townPage === "settings") drawTownSettings();
+  else if (townPage === "help") drawTownHelp();
+  else if (townPage === "tavern") drawTownTavern();
+  else if (townPage === "shop") drawTownShop();
+  else if (townPage === "smithy") drawTownSmithy();
   else if (townPage !== "menu") drawTownComingSoon();
   else drawTownMenu();
 }
@@ -399,14 +462,16 @@ function drawTownMenu() {
   let h = `<div class="game-title">EPITAPH</div>`;
   TOWN_MENU.forEach((item, i) => {
     const newMark = item.hasNew && item.hasNew() ? newBadge() : "";
-    h += gridRow(i === townMenuCursor, "10em 1fr", [`${esc(item.name)}${newMark}`, span("sub", item.summary())]);
-    if (i === 0) h += `<div class="list-gap"></div>`; // 「ダンジョンに潜る」とそれ以外の間を少しあける
+    // summary の中の改行(\n)は、そのまま改行して出す
+    const summary = esc(item.summary()).replace(/\n/g, "<br>");
+    h += gridRow(i === townMenuCursor, "10em 1fr", [`${esc(item.name)}${newMark}`, `<span class="sub">${summary}</span>`]);
+    if (item.gapAfter) h += `<div class="list-gap"></div>`; // まとまりの切れ目を少しあける
   });
   setScreen("拠点", h, false);
   setHint([["↑↓", "選ぶ"], ["Enter / Space", "決定"]]);
 }
 
-// 拠点:プレイヤー(タブ:ステータス・特性・刻印・書・スキル)
+// 拠点:プレイヤー(タブ:ステータス・特性・道具・刻印・書・スキル)
 function drawTownPlayer() {
   if (townPickSlot) {
     drawMaterialPicker();
@@ -414,6 +479,10 @@ function drawTownPlayer() {
   }
   if (townPickBook !== null) {
     drawBookPicker();
+    return;
+  }
+  if (townPickTool !== null) {
+    drawCarryPicker();
     return;
   }
   let h = `<div class="status-top"><span>Lv.<b>${base.level}</b> ${span("sub", `XP ${base.xp} / ${xpNeeded(base.level)}`)}</span>`
@@ -432,6 +501,7 @@ function drawTownPlayer() {
   else if (tab === "trait") h += traitPageHTML({});
   else if (tab === "material") h += playerMaterialHTML();
   else if (tab === "book") h += playerBookHTML();
+  else if (tab === "tools") h += playerToolsHTML();
   else h += playerSkillHTML();
 
   setScreen("拠点 - プレイヤー", h, false);
@@ -440,7 +510,7 @@ function drawTownPlayer() {
   } else if (tab === "status" || tab === "trait") {
     setHint([["←→", "タブ"], ["Esc / Q", "戻る"]]);
   } else {
-    const enter = { material: "刻印を選ぶ", book: "書を選ぶ", skill: "ポイントを振る" }[tab];
+    const enter = { material: "刻印を選ぶ", book: townCursor < BALANCE.bookSlots ? "書を選ぶ" : "交換する", skill: "ポイントを振る", tools: "道具を選ぶ" }[tab];
     setHint([["←→", "タブ"], ["↑↓", "選ぶ"], ["Enter / Space", enter], ["Esc / Q", "戻る"]]);
   }
 }
@@ -508,6 +578,10 @@ function traitPageHTML(eqMap = equipped) {
     for (const fx of idle) h += gridRow(false, "10em 1fr", [span("dim", EFFECTS[fx.id].name), span("dim", effectText(fx, false).replace(/^.*?:/, ""))]);
     h += `<div class="list-gap"></div>`;
   }
+  // 一族のセット効果(冒険中だけ。拠点ではプレイヤー画面の「刻印」タブに出す)
+  if (inRunScreen()) {
+    h += `<div class="list-title"><b>一族のセット効果</b></div>${clanSetHTML(eqMap, true)}<div class="list-gap"></div>`;
+  }
   const books = setBooks().filter(b => (base.skillAlloc[b.id] || 0) >= b.maxPoints);
   if (books.length === 0) {
     return h + `<div class="note">ついている特性はない。セットした書にポイントを上限まで振ると、特性が解放される</div>`;
@@ -548,6 +622,35 @@ function playerMaterialHTML() {
       `${mat ? materialMarks(mat) + materialStatsHTML(mat) : span("dim", "―")}${newMark}`,
     ]);
   });
+  // 一族のセット効果(拠点では装備を着けていないので、セットしている刻印を全部数える)
+  h += `<div class="list-gap"></div><div class="list-title"><b>一族のセット効果</b></div>`;
+  h += `<div class="note">同じ一族の固有装備から刻んだ刻印をそろえると付く。ここではセット中の刻印を全部数えている。ダンジョンでは、装備を着けている枠の刻印だけ数える</div>`;
+  h += clanSetHTML({}, false);
+  return h;
+}
+
+// 一族の名前を、一族の色で(例:ゴブリン一族)
+function clanNameHTML(clan) {
+  return `<span class="clan-tag" style="color:${clan.color}">${esc(clan.name)}</span>`;
+}
+
+// 一族の小さな札(短い名前。刻印の名前の横に出す。「呪」「浄化」の印と同じ形で、色は一族の色)
+function clanBadgeHTML(clan) {
+  return `<span class="clan-badge" style="background:${clan.color}">${esc(clan.short || clan.name)}</span>`;
+}
+
+// 一族ごとの刻印の数と、セット効果の一覧(数がそろっているものは明るく)
+//   needEquip:true なら装備を着けている枠の刻印だけ数える(ダンジョン)/ false ならセット中の全部(拠点)
+function clanSetHTML(eqMap, needEquip) {
+  const counts = clanCounts(eqMap, needEquip);
+  const cols = "8em 3em 1fr";
+  let h = gridRow(false, cols, [span("dim", "一族"), span("dim", "数"), span("dim", "セット効果")]);
+  for (const clan of clanList) {
+    const n = counts[clan.id] || 0;
+    const max = Math.max(...clan.sets.map(s => s.count));
+    const sets = clan.sets.map(s => span(n >= s.count ? "trait-on" : "dim", `${s.count}個:${s.desc}`)).join("<br>");
+    h += gridRow(false, cols, [n > 0 ? clanNameHTML(clan) : span("dim", clan.name), span(n > 0 ? "" : "dim", `${n}/${max}`), sets]);
+  }
   return h;
 }
 
@@ -565,6 +668,7 @@ function playerBookHTML() {
   for (const book of owned) {
     h += gridRow(false, "4em 1fr 8em", [span("dim", `×${base.books[book.id]}`), `${esc(book.name)}${base.bookNew[book.id] ? newBadge() : ""}`, ""]);
   }
+  h += bookExchangeHTML(); // 書の交換(以前は制作にあった)
   return h;
 }
 
@@ -639,19 +743,18 @@ function drawTownCraft() {
   h += `</div>`;
 
   const tab = CRAFT_TABS[craftTab].id;
-  if (tab === "book") h += craftBookHTML();
-  else if (!craftType) h += craftTypeListHTML(tab);
+  if (!craftType) h += craftTypeListHTML(tab);
   else if (tab === "enhance") h += craftEnhanceHTML();
   else if (tab === "purify") h += craftPurifyHTML();
+  else if (tab === "salvage") h += craftSalvageHTML();
   else h += craftFuseHTML();
 
   setScreen("拠点 - 制作", h, false);
-  if (tab !== "book" && craftType) {
-    const enter = tab === "enhance" ? "強化する" : tab === "purify" ? "浄化する" : fuseFirst ? "合成する" : "1個目に選ぶ";
+  if (craftType) {
+    const enter = tab === "enhance" ? "強化する" : tab === "purify" ? "浄化する" : tab === "salvage" ? "解体する" : fuseFirst ? "合成する" : "1個目に選ぶ";
     setHint([["↑↓", "選ぶ"], ["Enter / Space", enter], ["Esc / Q", fuseFirst ? "1個目を選び直す" : "種類を選び直す"]]);
   } else {
-    const enter = tab === "book" ? "交換する" : "種類を選ぶ";
-    setHint([["←→", "タブ"], ["↑↓", "選ぶ"], ["Enter / Space", enter], ["Esc / Q", "戻る"]]);
+    setHint([["←→", "タブ"], ["↑↓", "選ぶ"], ["Enter / Space", "種類を選ぶ"], ["Esc / Q", "戻る"]]);
   }
 }
 
@@ -659,16 +762,17 @@ function drawTownCraft() {
 function craftTypeListHTML(tab) {
   const notes = {
     enhance: `強化する刻印の種類を選ぶ。種類ごとに使う素材が決まっている。効果つき(呪い・浄化)の刻印は素材が${BALANCE.specialEnhanceCostMultiplier}倍いる`,
-    fuse: "同じ種類の刻印2個を1個にまとめる(性能は足し算)。強化値は +0 に戻るので、さらに強化できる。合成したものは、もう合成・分解できない。効果つき(呪い・浄化)どうしは合成できない",
+    fuse: "同じ種類の刻印2個を1個にまとめる(性能は足し算)。強化値は +0 に戻るので、さらに強化できる。合成したものは、もう合成できない(解体はできる)。効果つき(呪い・浄化)どうしは合成できない",
     purify: `聖水を使って、刻印の呪いを消す(良い効果は残る)。呪い1つにつき聖水1個。聖水はエリートがまれに落とす(今 ${base.resources.holy || 0}個)`,
+    salvage: `いらない刻印を解体して、その種類の強化に使う素材に戻す。戻るのは刻印の価値(強化に使った素材など)の${Math.round(BALANCE.salvageRate * 100)}%。合成したものも解体できる`,
   };
   let h = `<div class="note">${notes[tab]}</div>`;
-  const third = { enhance: "使う素材", fuse: "合成できる", purify: "呪いつき" }[tab];
+  const third = { enhance: "使う素材", fuse: "合成できる", purify: "呪いつき", salvage: "戻る素材" }[tab];
   h += gridRow(false, "7em 3em 1fr", [span("dim", "種類"), span("dim", "所持"), span("dim", third)]);
   CRAFT_TYPES.forEach((type, i) => {
     const all = materialsOfType(type);
     let third;
-    if (tab === "enhance") {
+    if (tab === "enhance" || tab === "salvage") {
       const r = RESOURCE_TYPES[ITEM_TYPES[type].resource];
       third = `<span style="color:${r.color}">${r.name}</span> ${span("sub", `(${base.resources[ITEM_TYPES[type].resource] || 0}個 持っている)`)}`;
     } else {
@@ -732,15 +836,15 @@ function craftFuseHTML() {
     const ng = fuseFirst && mat !== fuseFirst && !canFusePair(fuseFirst, mat);
     h += gridRow(i === craftPickCursor, "6em 1fr", [
       materialMarks(mat) || span("dim", "+0"),
-      ng ? `<span class="dim">${statsText(mat.stats)} (効果つきどうしは合成できない)</span>`
+      ng ? `<span class="dim">${esc(mat.name || "")} ${statsText(mat.stats)} (効果つきどうしは合成できない)</span>`
          : `${materialStatsHTML(mat)}${first}${materialSetText(mat)}`,
     ]);
   });
   // 2個目を選んでいるとき:合成するとどうなるか
   const sel = list[craftPickCursor];
   if (fuseFirst && sel && sel !== fuseFirst && canFusePair(fuseFirst, sel)) {
-    h += `<div class="info"><div>合成すると ${span("tag", "合成")} ${materialStatsHTML({ stats: fusedStats(fuseFirst, sel), effects: mergeEffects(fuseFirst.effects, sel.effects) })}</div>`
-       + `<div class="sub">強化値は +0 に戻る。もう合成・分解はできない</div></div>`;
+    h += `<div class="info"><div>合成すると ${span("tag", "合成")} ${materialStatsHTML({ name: `${fuseFirst.name}と${sel.name}`, sources: [...(fuseFirst.sources || []), ...(sel.sources || [])], stats: fusedStats(fuseFirst, sel), effects: mergeEffects(fuseFirst.effects, sel.effects) })}</div>`
+       + `<div class="sub">強化値は +0 に戻る。もう合成はできない(解体はできる)</div></div>`;
   }
   return h;
 }
@@ -770,27 +874,62 @@ function craftPurifyHTML() {
   return h;
 }
 
+// 制作の「解体」タブ:選んだ種類の刻印の一覧と、解体すると戻る素材の数
+function craftSalvageHTML() {
+  const resId = ITEM_TYPES[craftType].resource;
+  const res = RESOURCE_TYPES[resId];
+  let h = `<div class="list-title"><b>${ITEM_TYPES[craftType].name}</b>の刻印を解体　`
+        + `${span("sub", "戻る素材")} <span style="color:${res.color}">${res.name}</span></div>`;
+  const list = craftMatList();
+  if (list.length === 0) return h + `<div class="note">この種類の刻印を持っていない</div>`;
+  h += gridRow(false, "6em 1fr 5em", [span("dim", "強化"), span("dim", "性能"), span("dim", "戻る")]);
+  list.forEach((mat, i) => {
+    h += gridRow(i === craftPickCursor, "6em 1fr 5em", [
+      materialMarks(mat) || span("dim", "+0"),
+      `${materialStatsHTML(mat)}${materialSetText(mat)}`,
+      span("up", `${salvageValue(mat)}個`),
+    ]);
+  });
+  h += `<div class="info"><div class="sub">解体すると、元に戻せない(確認が出る)。セットしている刻印なら、その枠から外れる</div></div>`;
+  return h;
+}
+
 // その刻印を枠にセットしていれば「(頭にセット中)」
 function materialSetText(mat) {
   const setIn = Object.keys(base.materialSet).find(s => base.materialSet[s] === mat);
   return setIn ? ` <span class="dim" style="white-space:nowrap">(${EQUIP_SLOTS[setIn]}にセット中)</span>` : "";
 }
 
-// 制作の「書の交換」タブ
-function craftBookHTML() {
-  let h = `<div class="note">同じ書 ${BALANCE.bookExchangeCost}冊 → 1つ上のレベルの書 1冊</div>`;
+// プレイヤー画面の「書」タブの下:書の交換(行の番号は、書の枠のあとから数える)
+function bookExchangeHTML() {
+  let h = `<div class="list-gap"></div><div class="list-title"><b>書の交換</b>　${span("sub", `同じ書 ${BALANCE.bookExchangeCost}冊 → 1つ上のレベルの書 1冊`)}</div>`;
   const recipes = bookRecipes();
   if (recipes.length === 0) h += `<div class="note">交換できる書はありません</div>`;
   recipes.forEach((r, i) => {
     const have = base.books[r.from.id] || 0;
     const ok = have >= BALANCE.bookExchangeCost;
-    h += gridRow(i === townCursor, "11em 1fr 6em", [
+    h += gridRow(BALANCE.bookSlots + i === townCursor, "11em 1fr 6em", [
       span("book", r.to.name),
       `${span("dim", "←")} ${esc(r.from.name)} ×${BALANCE.bookExchangeCost}`,
       span(ok ? "up" : "dim", `所持 ${have}冊`),
     ]);
   });
   return h;
+}
+
+// 拠点:遊び方(説明の文は data/help.js)
+function drawTownHelp() {
+  let h = `<div class="tabs">`;
+  HELP_PAGES.forEach((page, i) => {
+    h += `<span class="tab${i === helpTab ? " active" : ""}">${esc(page.title)}</span>`;
+  });
+  h += `</div>`;
+  for (const sec of HELP_PAGES[helpTab].sections) {
+    h += `<div class="help-head">${esc(sec.head)}</div>`;
+    for (const line of sec.lines) h += `<div class="help-line">${esc(line)}</div>`;
+  }
+  setScreen("拠点 - 遊び方", h, false);
+  setHint([["←→", "タブ"], ["↑↓", "スクロール"], ["Esc / Q", "戻る"]]);
 }
 
 // 拠点:設定
@@ -838,13 +977,15 @@ function dexDetailHTML(tab, e) {
   let h = "";
 
   if (tab === "monster") {
-    h += `<div class="dex-name"><span style="color:${e.color}">${esc(e.symbol)}</span> ${esc(e.name)}</div>`;
+    h += `<div class="dex-name"><span style="color:${monsterColor(e)}">${esc(e.symbol)}</span> ${esc(e.name)}</div>`;
     h += row("出る階", depthText(e));
+    h += row("一族", monsterClan(e) ? clanNameHTML(monsterClan(e)) : span("dim", "なし"));
     h += row("HP", `${e.hp} ${span("dim", `(1階ごとに+${e.hpPerDepth})`)}`);
     h += row("攻撃", `${e.attackMin}〜${e.attackMax} ${span("dim", `(1階ごとに+${e.attackPerDepth || 0})`)}`);
     h += row("", span("dim", `地下${BALANCE.enemyGrowthFromFloor}階から${BALANCE.enemyTierFloors}階ごとに、さらに HP+${Math.round(BALANCE.enemyHpGrowthPerTier * 100)}%・攻撃+${Math.round(BALANCE.enemyAttackGrowthPerTier * 100)}%`));
     h += row("速さ", speedText(e.speed));
     if (e.ability) h += row("特徴", MONSTER_ABILITIES[e.ability.type](e.ability));
+    if (e.pack) h += row("群れ", `${e.pack[0]}〜${e.pack[1]}匹の群れで出てくる`);
     if (e.material) h += row("素材", `${RESOURCE_TYPES[e.material].name} ×${e.materialAmount || 1}`);
     h += row("倒した数", `${base.records.kills[e.id] || 0}体`);
     const drops = equipmentList.filter(x => x.from === e.id)
@@ -854,7 +995,7 @@ function dexDetailHTML(tab, e) {
     h += `<div class="dex-name">${span(ITEM_TYPES[e.slot].cls, ITEM_TYPES[e.slot].symbol)} ${esc(e.name)}</div>`;
     h += row("種類", ITEM_TYPES[e.slot].name);
     h += row("ステータス", `${statsHTML(e.stats)} ${span("dim", "(1〜5階)")}`);
-    if (e.block) h += row("防ぐ", `向いている方向から飛んでくる矢・炎のダメージ -${e.block}%`);
+    if (e.block) h += row("防ぐ", `向いている方向から飛んでくる矢・炎・属性の球のダメージ -${e.block}%`);
     if (e.effects && e.effects.length) h += row("効果", effectsHTML(e.effects, false));
     const m = monsterList.find(x => x.id === e.from);
     const from = e.from === "field" ? "床に落ちている"
@@ -862,6 +1003,8 @@ function dexDetailHTML(tab, e) {
     h += row("手に入る場所", from);
     h += row("出る階", depthText(e));
     h += row("拾った回数", `${base.records.equipFound[e.id]}回`);
+    if (e.materialName) h += row("刻むと", `刻印「${span("mat-name", e.materialName)}」になる`);
+    if (equipmentClan(e)) h += row("一族", `${clanNameHTML(equipmentClan(e))} ${span("dim", "(刻むと、この一族のセット効果に数えられる)")}`);
   } else {
     h += `<div class="dex-name">${span("book", "?")} ${esc(e.name)}</div>`;
     h += row("上がる", `${STAT_NAMES[e.stat]}(1段階 +${e.perTier})`);
@@ -869,8 +1012,12 @@ function dexDetailHTML(tab, e) {
     h += row("特性", `${esc(e.trait.name)}`);
     h += `<div class="dim" style="padding-left:6em">${esc(e.trait.desc)}</div>`;
     const froms = bookFrom(e);
-    h += row("手に入れ方", froms.length ? "敵がまれに落とす" : `制作で交換(1つ下の書 ×${BALANCE.bookExchangeCost})`);
+    h += row("手に入れ方", froms.length ? "敵がまれに落とす" : `「プレイヤー」→「書」で交換(1つ下の書 ×${BALANCE.bookExchangeCost})`);
     h += row("持っている数", `${base.books[e.id] || 0}冊`);
+  }
+  // 紹介文(monsters.js・equipment.js・books.js の desc。書いていなければ出さない)
+  if (typeof e.desc === "string" && e.desc !== "") {
+    h += `<div class="list-gap"></div><div class="note">${esc(e.desc).replace(/\n/g, "<br>")}</div>`;
   }
   return h;
 }

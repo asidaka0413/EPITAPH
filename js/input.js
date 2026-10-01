@@ -48,7 +48,7 @@ function cancelGiveUp() {
   giveUpStartAt = 0;
   if (giveUpTimer) clearInterval(giveUpTimer);
   giveUpTimer = null;
-  if (screenMode === "dungeon" || screenMode === "inventory" || screenMode === "camp") drawStatus();
+  if (inRunScreen()) drawStatus();
 }
 
 document.addEventListener("keyup", (e) => {
@@ -57,18 +57,32 @@ document.addEventListener("keyup", (e) => {
 window.addEventListener("blur", cancelGiveUp); // ほかのウィンドウに切り替えたら取り消し
 
 document.addEventListener("keydown", (e) => {
+  // Ctrl・Alt などと一緒に押したキーは、ブラウザの操作(Ctrl+S など)なので無視する(S で動いてしまわないように)
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const key = KEY_ALIASES[e.key] || e.key;
   // 矢印キー・スペース・バックスペースで、ページがスクロールしたり戻ったりしないようにする
   if (key.startsWith("Arrow") || key === "Enter" || key === "Escape") e.preventDefault();
+  // 押しっぱなしの Enter / Space は無視する(分かれ道 → キャンプ、リザルト → 刻む が勝手に決まらないように)
+  if (e.repeat && key === "Enter") return;
+  // 分かれ道・キャンプでは、押しっぱなしの矢印も無視する(移動キーを押したまま階段に乗ったとき、選んでいる道が動かないように)
+  if (e.repeat && (screenMode === "route" || screenMode === "camp") && key.startsWith("Arrow")) return;
   // X を押し始めたら自害のカウント開始(押しっぱなしの繰り返しは無視)
   if (key === "x" || key === "X") {
     if (!e.repeat) startGiveUp();
     return;
   }
-  // ダンジョンで移動キーを押しっぱなしにしたとき(e.repeat)
+  // F で、敵の視界と攻撃範囲の表示を切り替える(ダンジョンだけ。押しっぱなしの繰り返しは無視)
+  if (key === "f" || key === "F") {
+    if (!e.repeat && screenMode === "dungeon") {
+      threatView = !threatView;
+      render();
+    }
+    return;
+  }
+  // ダンジョンで移動キー・ターンスキップを押しっぱなしにしたとき(e.repeat)
   //   ・moveRepeatMs ミリ秒に1回までしか動かない(速く動きすぎないように)
   //   ・敵が隣にいたら止まる(押しっぱなしのまま敵に突っこまないように。攻撃するときは押し直す)
-  if (e.repeat && screenMode === "dungeon" && key.startsWith("Arrow")) {
+  if (e.repeat && screenMode === "dungeon" && (key.startsWith("Arrow") || isWaitKey(key))) {
     const now = performance.now();
     if (now - lastRepeatMoveAt < BALANCE.moveRepeatMs) return;
     if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => monsterAt(px + dx, py + dy))) return;
@@ -76,6 +90,11 @@ document.addEventListener("keydown", (e) => {
   }
   handleKey({ key });
 });
+
+// ターンスキップのキーか(Z か .)
+function isWaitKey(key) {
+  return key === "z" || key === "Z" || key === ".";
+}
 
 // キー操作の本体(key は KEY_ALIASES で置き換えたあとのキー)
 function handleKey(e) {
@@ -146,6 +165,15 @@ function handleKey(e) {
     return;
   }
 
+  // 階段の道を選ぶ画面
+  if (screenMode === "route") {
+    if (e.key === "ArrowUp") routeCursor = Math.max(0, routeCursor - 1);
+    else if (e.key === "ArrowDown") routeCursor = Math.min(routeChoices.length - 1, routeCursor + 1);
+    else if (e.key === "Enter") { chooseRoute(); return; }
+    render();
+    return;
+  }
+
   if (screenMode === "camp" && campPicking) {
     const count = campEquipList().length;
     if (e.key === "ArrowUp") campPickCursor = Math.max(0, campPickCursor - 1);
@@ -181,6 +209,12 @@ function handleKey(e) {
     return;
   }
 
+  // Z / . でターンスキップ(その場で1ターン待つ。敵は動く)
+  if (isWaitKey(e.key)) {
+    waitTurn();
+    return;
+  }
+
   let dx = 0, dy = 0;
   if (e.key === "ArrowUp") dy = -1;
   if (e.key === "ArrowDown") dy = 1;
@@ -193,15 +227,17 @@ function handleKey(e) {
 
 // ==================== 起動 ====================
 if (typeof EQUIPMENT_DATA === "undefined" || typeof MONSTER_DATA === "undefined" || typeof BOOK_DATA === "undefined"
-    || typeof BLESSING_DATA === "undefined" || typeof CURSE_DATA === "undefined") {
+    || typeof BLESSING_DATA === "undefined" || typeof CURSE_DATA === "undefined" || typeof CLAN_DATA === "undefined" || typeof HELP_PAGES === "undefined" || typeof ELEMENT_DATA === "undefined") {
   document.getElementById("screen").textContent =
-    "equipment.js・monsters.js・books.js・effects.js のどれかが読み込めませんでした。index.html と同じ場所の data フォルダにあるか確認してください。";
+    "equipment.js・monsters.js・books.js・effects.js・sets.js・elements.js・help.js のどれかが読み込めませんでした。index.html と同じ場所の data フォルダにあるか確認してください。";
 } else {
   // メイン画面の大きさを、マップの大きさ(文字数 × 行数)に固定する
   //   ch は文字1個分の幅、em は文字の高さ。1.15 はマップの行の高さ(CSS の line-height)
   const screenEl = document.getElementById("screen");
   screenEl.style.width = `${BALANCE.mapWidth}ch`;
   screenEl.style.height = `${BALANCE.mapHeight * 1.15}em`;
+
+  initTooltip(); // マップにマウスを合わせたときの詳細ウィンドウ
 
   const warnings = loadGameData();
   addLog(loadGame()); // セーブデータを読み込む

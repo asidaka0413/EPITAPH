@@ -1,4 +1,4 @@
-// ステータスの計算と、書・スキル・特性
+// ステータスの計算と、一族のセット効果、書・スキル・特性
 // index.html から <script src> で読み込まれる(読み込む順番は index.html に書いてある)
 
 // ==================== ステータス計算 ====================
@@ -16,7 +16,7 @@ function getPlayerStats(eqMap = equipped) {
 // ステータスを「どこから来た数値か」に分けて計算する(ステータス画面の内訳にも使う)
 //   base:素のステータス / equip:装備 / material:刻印(装備を着けている枠だけ)
 //   materialIdle:セットしているが、装備を着けていないので効いていない刻印
-//   book:書のスキル / trait:特性(頑丈の最大HPなど)
+//   book:書のスキル / trait:特性(頑丈の最大HPなど)と、一族のセット効果(AGL+ など)
 function statSources(eqMap = equipped) {
   const zero = () => Object.fromEntries(Object.keys(STAT_NAMES).map(k => [k, 0]));
   const src = { base: { ...zero(), ...BALANCE.playerBaseStats }, equip: zero(), material: zero(), materialIdle: zero(), book: zero(), trait: zero() };
@@ -42,7 +42,96 @@ function statSources(eqMap = equipped) {
   }
   // 特性「頑丈」で最大HPが増える
   src.trait.hp += traitMax("bonusHp", 0);
+  // 一族のセット効果で上がるステータス(ステータス画面では「書・特性」の列に入る)
+  for (const set of activeSets(eqMap)) {
+    for (const key in set.stats || {}) src.trait[key] += set.stats[key];
+  }
   return src;
+}
+
+// ==================== 一族のセット効果 ====================
+// 同じ一族の固有装備から刻んだ刻印をそろえると、セット効果が付く(一族とセット効果は sets.js)
+//   刻印は「その枠に装備を着けているときだけ」数える(刻印の効果と同じ)
+function clanById(id) {
+  return clanList.find(c => c.id === id) || null;
+}
+
+// 敵の一族(なければ null)
+function monsterClan(monsterData) {
+  return (monsterData && monsterData.clan && clanById(monsterData.clan)) || null;
+}
+
+// 敵のマップ上の色:一族があれば一族の色(sets.js の colors。書いていなければ一族の color)。なければ monsters.js の color
+//   エリート・墓守の金色は、マップを描くところ(tileAt)で優先している
+function monsterColor(monsterData) {
+  const clan = monsterClan(monsterData);
+  if (!clan) return monsterData.color;
+  return (clan.colors && clan.colors[monsterData.id]) || clan.color || monsterData.color;
+}
+
+// 装備の一族(敵の固有装備なら、その敵の一族。床の装備などは null)
+function equipmentClan(equipData) {
+  return equipData ? monsterClan(monsterList.find(m => m.id === equipData.from)) : null;
+}
+
+// 刻印の一族の一覧(元の装備から決める)
+//   合成した刻印は、元の2つの一族を両方持つ。同じ一族どうしを合成したものは1つ分
+function materialClans(mat) {
+  const clans = [];
+  for (const id of mat.sources || []) {
+    const clan = equipmentClan(equipmentList.find(e => e.id === id));
+    if (clan && !clans.includes(clan)) clans.push(clan);
+  }
+  return clans;
+}
+
+// 一族ごとの刻印の数(一族の id → 数)
+//   needEquip:true なら、装備を着けている枠の刻印だけ数える(拠点の表示では false で、セット中の全部を数える)
+function clanCounts(eqMap = equipped, needEquip = true) {
+  const counts = {};
+  for (const slot in base.materialSet) {
+    if (needEquip && !eqMap[slot]) continue;
+    for (const clan of materialClans(base.materialSet[slot])) counts[clan.id] = (counts[clan.id] || 0) + 1;
+  }
+  return counts;
+}
+
+// 今効いているセット効果の一覧(sets.js の sets の中のもの)
+function activeSets(eqMap = equipped) {
+  const counts = clanCounts(eqMap);
+  const list = [];
+  for (const clan of clanList) {
+    for (const set of clan.sets) {
+      if ((counts[clan.id] || 0) >= set.count) list.push(set);
+    }
+  }
+  return list;
+}
+
+// セット効果 key の合計(数値の効果。なければ 0)
+function setEffectSum(key) {
+  return activeSets().reduce((sum, set) => sum + (typeof set[key] === "number" ? set[key] : 0), 0);
+}
+
+// セット効果 key があるか(ON / OFF の効果)
+function hasSetEffect(key) {
+  return activeSets().some(set => set[key]);
+}
+
+// ==================== ダメージの種類と属性 ====================
+// プレイヤーが受けるダメージには、種類(category)と属性(element)の札が付く(elements.js)
+// 種類・属性に合う「ダメージを減らす効果」を全部かけた倍率を返す(1 なら減らない、0.5 なら半分)
+//   今はセット効果の damageCut だけ。あとで特性や装備の効果からも足せるように、ここにまとめている
+function damageTakenRate(category, element = null) {
+  let rate = 1;
+  for (const set of activeSets()) {
+    for (const cut of set.damageCut || []) {
+      const okCategory = !cut.category || cut.category === category;
+      const okElement = !cut.element || cut.element === element;
+      if (okCategory && okElement) rate *= 1 - cut.rate;
+    }
+  }
+  return rate;
 }
 
 // ==================== 書・スキル ====================

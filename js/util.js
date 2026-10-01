@@ -37,8 +37,11 @@ function resetPlayerStats() {
   invPickSlot = null;
   maxHP = getPlayerStats().hp;
   playerHP = maxHP;
-  playerPoison = null;
+  playerDots = {};
+  runTools = [];
+  playerBuffs = {};
   playerWeak = null;
+  playerSlow = null;
   facing = null;
 }
 

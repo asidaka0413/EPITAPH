@@ -2,7 +2,7 @@
 // index.html から <script src> で読み込まれる(読み込む順番は index.html に書いてある)
 
 // ==================== ゲーム全体の状態 ====================
-// "dungeon"(ダンジョン) / "inventory"(持ち物) / "camp"(キャンプ) / "result"(リザルト) / "refine"(刻む) / "town"(拠点)
+// "dungeon"(ダンジョン) / "inventory"(持ち物) / "route"(階段の道を選ぶ) / "camp"(キャンプ) / "result"(リザルト) / "refine"(刻む) / "town"(拠点)
 let screenMode = "dungeon";
 
 let map = [];
@@ -36,8 +36,10 @@ let townPickSlot = null;   // 刻印を選んでいる最中の枠の名前(選�
 let townPickCursor = 0;    // 刻印選択の一覧で選んでいる行の番号
 let playerTab = 0;         // プレイヤー画面で開いているタブの番号(PLAYER_TABS の何番目か)
 let townPickBook = null;   // 書を選んでいる最中の書の枠の番号(0〜2。選んでいないときは null)
+let townPickTool = null;   // 持ちこむ道具を選んでいる最中の枠の番号(選んでいないときは null)
 let townAllocating = false; // スキルにポイントを振っている最中か
 let dexTab = 0;            // 図鑑で開いているタブの番号(DEX_TABS の何番目か)
+let helpTab = 0;           // 遊び方で開いているタブの番号(help.js の HELP_PAGES の何番目か)
 let craftTab = 0;          // 制作で開いているタブの番号(CRAFT_TABS の何番目か)
 let craftType = null;      // 制作(強化・合成)で選んでいる刻印の種類(ITEM_TYPES の id。選んでいないときは null)
 let craftPickCursor = 0;   // 制作で、種類を選んだあとの刻印の一覧で選んでいる行の番号
@@ -69,6 +71,7 @@ let lastRunResult = null;  // リザルト画面に出す内容(死んだとき�
 let equipmentList = [];    // equipment.js の装備のうち、正しく書けているもの(起動時にチェック)
 let monsterList = [];      // monsters.js の敵のうち、正しく書けているもの(起動時にチェック)
 let bookList = [];         // books.js の書のうち、正しく書けているもの(起動時にチェック)
+let clanList = [];         // sets.js の一族のうち、正しく書けているもの(起動時にチェック)
 let EFFECTS = {};          // effects.js の効果。id → 効果(kind:"bless" 良い効果 / "curse" 呪い)
 
 // 拠点の永続データ(死んでも消えない。セーブされるのはここだけ)
@@ -101,7 +104,24 @@ function newBase() {
       autoEquip: true, // 装備を拾ったとき、空いている枠があれば自動で装備する
       debug: false,           // デバッグモード(画面右にデバッグ用のボタンを出す)
       debugAlwaysDrop: false, // デバッグ:敵が必ず書と固有装備を落とす
+      debugInvincible: false, // デバッグ:無敵(ダメージを受けない)
     },
+    // 酒場の依頼の報酬で手に入るお金(死んでもなくならない)
+    gold: 0,
+    // 道具屋(js/shop.js)。built:建てたか / unlocked:納品して解放した品(品の id → true)
+    shop: { built: false, unlocked: {} },
+    // 鍛冶屋(js/smithy.js)。built:建てたか / level:腕前(0 なら1〜5階並み、1 なら6〜10階並み …)
+    smithy: { built: false, level: 0 },
+    // 鍛冶屋への注文(次の冒険の最初から着けている装備)。枠の名前(head, ring1 など)→ { level: 注文したときの腕前 }
+    smithOrders: {},
+    // 道具の在庫(道具屋で買ったもの)。道具の id → 数(死んでもなくならない)
+    toolStock: {},
+    // 次の冒険に持ちこむ道具の枠(carrySlots 個)。1枠の形:{ id: 道具の id, count: 数 } か null
+    //   プレイヤー画面の「道具」タブで、在庫からセットする。潜るときに持っていき、在庫から同じ道具を補充する
+    carry: Array(BALANCE.carrySlots).fill(null),
+    // 酒場の依頼(js/quests.js)。board:掲示板の普通の依頼(null なら次に拠点に戻ったとき作る)/ special:特殊依頼(なければ null)
+    //   accepted:受けている依頼(普通は questMaxAccepted 個まで + 特殊依頼1つ。次の冒険のあいだだけ有効)
+    quests: { board: null, special: null, accepted: [] },
     // 前回死んだときの墓(いちばん最近のもの1つだけ。なければ null)
     //   { depth: 死んだ階, killerId: 倒した敵の id, killerName: 死因, level, kills: 倒した数, turns, runNo: 何回目の冒険か,
     //     relic: 遺品(着けていた装備から1つ。なければ null), relicTaken: 遺品を持ち帰ったか }
@@ -149,6 +169,28 @@ function loadGameData() {
   addEffects(BLESSING_DATA, "bless", "effects.js");
   addEffects(CURSE_DATA, "curse", "effects.js");
 
+  // 一族(敵の clan のチェックに使うので、敵より先に読む)
+  clanList = [];
+  for (const c of CLAN_DATA) {
+    if (clanList.some(x => x.id === c.id)) {
+      warnings.push(`⚠ sets.js:「${c.name}」の id「${c.id}」はほかの一族と同じです`);
+      continue;
+    }
+    const badStat = (c.sets || []).flatMap(s => Object.keys(s.stats || {})).find(key => !STAT_NAMES[key]);
+    if (badStat) {
+      warnings.push(`⚠ sets.js:「${c.name}」のセット効果の「${badStat}」というステータスはありません`);
+      continue;
+    }
+    // damageCut の種類・属性が elements.js にあるか
+    const badCut = (c.sets || []).flatMap(s => s.damageCut || [])
+      .find(cut => (cut.category && !DAMAGE_CATEGORIES[cut.category]) || (cut.element && !ELEMENT_DATA[cut.element]));
+    if (badCut) {
+      warnings.push(`⚠ sets.js:「${c.name}」の damageCut の「${badCut.category || badCut.element}」という種類・属性はありません(elements.js を見てください)`);
+      continue;
+    }
+    clanList.push(c);
+  }
+
   monsterList = [];
   for (const m of MONSTER_DATA) {
     if (typeof m.symbol !== "string" || m.symbol.length !== 1) {
@@ -163,11 +205,26 @@ function loadGameData() {
       warnings.push(`⚠ monsters.js:「${m.name}」の material「${m.material}」という素材はありません`);
       continue;
     }
+    if (m.clan && !clanList.some(c => c.id === m.clan)) {
+      warnings.push(`⚠ monsters.js:「${m.name}」の clan「${m.clan}」という一族はありません(sets.js の id を書いてください)`);
+      continue;
+    }
     if (m.ability && !MONSTER_ABILITIES[m.ability.type]) {
       warnings.push(`⚠ monsters.js:「${m.name}」の ability「${m.ability.type}」という動きはありません`);
       continue;
     }
+    if (m.ability && m.ability.element && !ELEMENT_DATA[m.ability.element]) {
+      warnings.push(`⚠ monsters.js:「${m.name}」の element「${m.ability.element}」という属性はありません(elements.js の id を書いてください)`);
+      continue;
+    }
     monsterList.push(m);
+  }
+
+  // 呼び出す敵(summonId)・連れてくる手下(escortFrom)が monsters.js にいるか(敵を全部読んでから調べる)
+  for (const m of monsterList) {
+    const ab = m.ability || {};
+    const bad = [ab.summonId, ...(ab.escortFrom || [])].filter(id => id).find(id => !monsterList.some(x => x.id === id));
+    if (bad) warnings.push(`⚠ monsters.js:「${m.name}」の呼び出し・手下の「${bad}」という敵はいません`);
   }
 
   equipmentList = [];
@@ -295,6 +352,16 @@ function saveGame() {
   }
 }
 
+// 念のため、セーブデータを別の名前で残しておく(壊れていたとき・古い形を直す前など)
+//   保存する場所がいっぱいで残せなくても、ゲームは止めない(残せなかったことだけ、開発者向けの画面に出す)
+function backupSave(name, text) {
+  try {
+    localStorage.setItem(name, text);
+  } catch (e) {
+    console.warn(`セーブデータの控え(${name})を残せませんでした`, e);
+  }
+}
+
 // セーブデータを読み込んで base に入れる。ログに出すメッセージを返す
 function loadGame() {
   let text;
@@ -309,18 +376,18 @@ function loadGame() {
   try {
     data = JSON.parse(text);
   } catch (e) {
-    localStorage.setItem(`${SAVE_KEY}-broken`, text); // 壊れたデータは念のため別の名前で残す
+    backupSave(`${SAVE_KEY}-broken`, text); // 壊れたデータは念のため別の名前で残す
     return "⚠ セーブデータが壊れていたので、はじめから始めます";
   }
 
   // 古いバージョンなら、1つずつ新しい形に直していく
   const migrated = data.version < SAVE_VERSION;
-  if (migrated) localStorage.setItem(`${SAVE_KEY}-v${data.version}`, text); // 直す前のデータも念のため残す
+  if (migrated) backupSave(`${SAVE_KEY}-v${data.version}`, text); // 直す前のデータも念のため残す
   while (data.version < SAVE_VERSION && SAVE_MIGRATIONS[data.version]) {
     data = SAVE_MIGRATIONS[data.version](data);
   }
   if (data.version !== SAVE_VERSION) {
-    localStorage.setItem(`${SAVE_KEY}-v${data.version}`, text); // 読めないデータも念のため残す
+    backupSave(`${SAVE_KEY}-v${data.version}`, text); // 読めないデータも念のため残す
     return `⚠ セーブデータの形式(ver.${data.version})が読み込めないので、はじめから始めます`;
   }
 
@@ -367,6 +434,10 @@ function loadGame() {
     mat && ITEM_TYPES[mat.slot] && mat.stats && Object.keys(mat.stats).every(key => STAT_NAMES[key]));
   // 強化値・合成の印(強化ができる前の刻印は +0・未合成)
   for (const mat of base.materials) {
+    // 名前:名前ができる前の刻印には「胴の刻印」のような名前を補う
+    if (typeof mat.name !== "string" || mat.name === "") mat.name = defaultMaterialName(mat.slot);
+    // 元の装備の一覧:記録がない古い刻印は空(どの一族にも入らない)
+    mat.sources = (Array.isArray(mat.sources) ? mat.sources : []).filter(id => typeof id === "string");
     mat.plus = Math.max(0, Math.min(BALANCE.enhanceMax, Math.floor(num(mat.plus, 0))));
     mat.fused = !!mat.fused;
     mat.purified = !!mat.purified;
@@ -374,6 +445,12 @@ function loadGame() {
     mat.effects = (Array.isArray(mat.effects) ? mat.effects : [])
       .filter(fx => fx && EFFECTS[fx.id] && typeof fx.value === "number")
       .map(fx => ({ id: fx.id, value: fx.value }));
+    // 強化に使った素材の合計(解体したときの価値)。記録がない古い刻印は、今の強化値から見積もる
+    if (typeof mat.spent !== "number" || mat.spent < 0) {
+      let spent = 0;
+      for (let p = 0; p < mat.plus; p++) spent += BALANCE.enhanceCostBase + p * BALANCE.enhanceCostPerPlus;
+      mat.spent = spent * (isSpecialMaterial(mat) ? BALANCE.specialEnhanceCostMultiplier : 1);
+    }
   }
   for (const slot in (b.materialSet || {})) {
     const mat = b.materials && b.materials[b.materialSet[slot]];
@@ -398,6 +475,32 @@ function loadGame() {
       relicTaken: !!g.relicTaken,
     };
   }
+  // 鍛冶屋と、注文(枠が存在するものだけ)
+  const sm = b.smithy || {};
+  base.smithy.built = !!sm.built;
+  base.smithy.level = Math.max(0, Math.min(SMITH_LEVELS.length, Math.floor(num(sm.level, 0))));
+  for (const slot in (b.smithOrders || {})) {
+    if (EQUIP_SLOTS[slot]) base.smithOrders[slot] = { level: Math.max(0, Math.floor(num((b.smithOrders[slot] || {}).level, 0))) };
+  }
+  // 道具屋と、持ちこむ道具(道具が shop.js にあるものだけ)
+  const sh = b.shop || {};
+  base.shop.built = !!sh.built;
+  for (const id in (sh.unlocked || {})) base.shop.unlocked[id] = true;
+  for (const id in (b.toolStock || {})) {
+    if (TOOL_DATA[id]) base.toolStock[id] = Math.max(0, Math.floor(num(b.toolStock[id], 0)));
+  }
+  const oldCarry = Array.isArray(b.carry) ? b.carry : [];
+  base.carry = Array(BALANCE.carrySlots).fill(null).map((_, i) => {
+    const c = oldCarry[i];
+    return c && TOOL_DATA[c.id] && typeof c.count === "number" && c.count > 0 ? { id: c.id, count: c.count } : null;
+  });
+  // ゴールドと酒場の依頼(依頼の型が quests.js にあるものだけ)
+  base.gold = Math.max(0, num(b.gold, 0));
+  const qs = b.quests || {};
+  const okQuest = q => q && typeof q === "object" && QUEST_TYPES[q.type] && typeof q.uid === "string";
+  base.quests.board = Array.isArray(qs.board) ? qs.board.filter(okQuest) : null;
+  base.quests.special = okQuest(qs.special) ? qs.special : null;
+  base.quests.accepted = Array.isArray(qs.accepted) ? qs.accepted.filter(okQuest) : [];
   if (data.savedAt) lastSavedAt = new Date(data.savedAt);
   checkLevelUp(); // 経験値の計算方法が変わって、もうレベルが上がれる分たまっていたら上げる
   if (migrated) saveGame(); // 新しい形に直したら、すぐ保存しておく(次に読むとき直し直さないように)

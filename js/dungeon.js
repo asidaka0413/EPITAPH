@@ -1,4 +1,4 @@
-// ダンジョン生成・階層・墓と遺品・エリート・キャンプ
+// ダンジョン生成・階層・墓と遺品・エリート・階段の道(分かれ道)・キャンプ
 // index.html から <script src> で読み込まれる(読み込む順番は index.html に書いてある)
 
 // ==================== ダンジョン生成 ====================
@@ -63,22 +63,36 @@ function makeMap() {
   monsters = [];
   items = [];
   flames = [];
+  balls = [];
   if (eliteFloor) placeElite(stairsRoom);
   for (let i = 1; i < rooms.length - 1; i++) {
     const r = rooms[i];
-    const monsterData = Math.random() < BALANCE.monsterSpawnChance ? pickWeighted(monsterList, depth) : null;
+    // 敵がいる確率は、選んだ道(険しい道・静かな道)で変わる
+    const spawnChance = BALANCE.monsterSpawnChance * routeFx("spawnRate", 1);
+    const monsterData = Math.random() < spawnChance ? pickWeighted(monsterList, depth) : null;
     if (monsterData) {
       // monsters.js の中から、この階層で出る敵を1体置く
       monsters.push(newMonster(monsterData, r.cx, r.cy));
+      // 群れ(pack):同じ部屋に、残りの仲間を出す
+      if (monsterData.pack) {
+        const count = randInt(monsterData.pack[0], monsterData.pack[1]) - 1;
+        for (let n = 0; n < count; n++) placeInRoom(r, monsterData);
+      }
+      // 手下(ゴブリンの族長など):escortFrom の敵から escorts 体を、同じ部屋に出す
+      const ab = monsterData.ability;
+      if (ab && ab.escorts) {
+        for (let n = 0; n < ab.escorts; n++) {
+          const data = monsterList.find(m => m.id === ab.escortFrom[randInt(0, ab.escortFrom.length - 1)]);
+          if (data) placeInRoom(r, data);
+        }
+      }
     }
   }
 
-  // この階に出てきた敵は、図鑑に「出会った」として登録(マップは全部見えているので)
-  for (const m of monsters) base.records.seen[m.data.id] = true;
-
   // 床に落ちている装備(from が "field" のもの)を、決まった個数だけ置く
   //   スタートと階段の部屋以外からランダムに部屋を選び、その中の空いている場所に置く(敵がいる部屋でもOK)
-  const itemCount = randInt(BALANCE.fieldItemsMin, BALANCE.fieldItemsMax);
+  //   個数は、選んだ道(静かな道)で変わる
+  const itemCount = randInt(routeFx("itemsMin", BALANCE.fieldItemsMin), routeFx("itemsMax", BALANCE.fieldItemsMax));
   const middleRooms = rooms.slice(1, rooms.length - 1);
   for (let i = 0; i < itemCount && middleRooms.length > 0; i++) {
     const r = middleRooms[randInt(0, middleRooms.length - 1)];
@@ -92,14 +106,29 @@ function makeMap() {
   placeGrave(rooms);
 }
 
+// 部屋 r の空いているマスに、敵を1体置く(群れ・手下用)。空きが見つからなければ置かない
+function placeInRoom(r, data) {
+  for (let i = 0; i < 30; i++) {
+    const x = randInt(r.x, r.x + r.w - 1), y = randInt(r.y, r.y + r.h - 1);
+    if (map[y][x] === "." && !monsterAt(x, y) && !(x === px && y === py)) {
+      monsters.push(newMonster(data, x, y));
+      return;
+    }
+  }
+}
+
 function startNewRun() {
   depth = 1;
+  floorRoute = STAIR_ROUTES[0]; // 最初の階は「ふつうの道」
+  nextRoute = null;
   resetPlayerStats();
   runStats = newRunStats();
   makeMap();
   screenMode = "dungeon";
   clearLog();
   addLog("ダンジョンに潜った");
+  takeCarryIntoRun(); // 道具屋で買った道具を持っていく
+  equipSmithOrders(); // 鍛冶屋に注文した装備を、最初から着けている
   announceGrave();
   render();
 }
@@ -138,7 +167,7 @@ function makeRelic(eq) {
 
 // 死んだとき:墓を建てる(前の墓は消える)
 function buildGrave(totalKills) {
-  const worn = Object.values(equipped);
+  const worn = Object.values(equipped).filter(eq => !eq.smith); // 鍛冶屋の装備は遺品にならない
   const relic = worn.length > 0 ? makeRelic(worn[randInt(0, worn.length - 1)]) : null; // 着けていた装備から1つ
   base.grave = {
     depth, killerId: runStats.killedById || null, killerName: runStats.killedBy || "何か",
@@ -165,7 +194,6 @@ function placeGrave(rooms) {
   const spot = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [graveSpot.x + dx, graveSpot.y + dy]).find(([x, y]) => free(x, y));
   if (data && spot) {
     monsters.push(newMonster(data, spot[0], spot[1], { elite: true, guardian: true, dormant: true }));
-    base.records.seen[data.id] = true;
   }
 }
 
@@ -260,13 +288,107 @@ function enemyAttackRate(d) {
   return 1 + enemyTier(d) * BALANCE.enemyAttackGrowthPerTier;
 }
 
+// 今いる階の敵のHP・攻撃力にかかる倍率(深さの段階 × 選んだ道の効果)
+function floorHpRate() {
+  return enemyHpRate(depth) * routeFx("enemyHp", 1);
+}
+function floorAttackRate() {
+  return enemyAttackRate(depth) * routeFx("enemyAttack", 1);
+}
+
 // 敵を1体作る(この階の強さで)。extra に { elite: true } などを渡せる
 //   hp / maxHp:今のHPと最大HP(トロルの回復に使う) / data:名前・記号・攻撃力などは data から読む
 //   energy:行動力。毎ターン speed ずつたまり、1 たまるごとに1回行動する
 function newMonster(data, x, y, extra = {}) {
-  let hp = Math.round((data.hp + (depth - 1) * data.hpPerDepth) * enemyHpRate(depth));
+  let hp = Math.round((data.hp + (depth - 1) * data.hpPerDepth) * floorHpRate());
   if (extra.elite) hp = Math.round(hp * BALANCE.eliteHpMultiplier);
-  return { x, y, hp, maxHp: hp, data, energy: 0, ...extra };
+  // facing:向き(最初はランダム)。hunting:プレイヤーに気づいているか(最初は気づいていない)
+  return { x, y, hp, maxHp: hp, data, energy: 0, facing: DIRS4[randInt(0, 3)], hunting: false, ...extra };
+}
+
+// ==================== 階段の道 ====================
+// 階段を降りるとき、次の階への「道」を選ぶ(階段 → 道を選ぶ → キャンプ → 次の階)
+//   選んだ道の効果は、次の1階だけ
+// 道を増やすときは、ここに { id, name, desc, ... } を足す
+//   id:区別するための名前 / name:表示名 / desc:説明文を返す関数
+//   always:true なら毎回必ず出る(それ以外の道は、毎回 routeExtraMin〜routeExtraMax 個だけランダムに出る)
+//   available:出せるかどうかを返す関数(省略すると、いつでも出せる)
+//   fx:次の階での効果(書いていないものは「ふつう」のまま)
+//     enemyHp / enemyAttack:敵のHP・攻撃力の倍率 / spawnRate:部屋に敵がいる確率の倍率
+//     materialRate:敵が落とす素材の倍率 / dropRate:固有装備のドロップ率の倍率
+//     itemsMin / itemsMax:床に落ちている装備の数
+//   fall:true なら、一気に何階か下へ落ちる(落ちる先は holeTarget で決める)
+const STAIR_ROUTES = [
+  { id: "normal", name: "ふつうの道", always: true, fx: {},
+    desc: () => "いつも通りの道" },
+  { id: "rough", name: "険しい道", fx: BALANCE.routeRough,
+    desc: () => `敵のHP・攻撃力が${BALANCE.routeRough.enemyHp}倍で、敵も多い。そのかわり素材が${BALANCE.routeRough.materialRate}倍、固有装備が${BALANCE.routeRough.dropRate}倍出やすい` },
+  { id: "quiet", name: "静かな道", fx: BALANCE.routeQuiet,
+    desc: () => `敵の数が半分くらい。そのかわり床の装備は${BALANCE.routeQuiet.itemsMin}〜${BALANCE.routeQuiet.itemsMax}個` },
+  { id: "hole", name: "深い穴", fx: {}, fall: true,
+    available: () => holeTarget(depth) > depth + 1, // 1階しか落ちられないときは出さない
+    desc: () => `一気に地下${holeTarget(depth)}階まで落ちる。途中の階の装備や素材は手に入らない` },
+];
+
+let routeChoices = [];           // 道を選ぶ画面に出している道(STAIR_ROUTES の中のもの)
+let routeCursor = 0;             // 道を選ぶ画面で選んでいる行の番号
+let nextRoute = null;            // 選んだ道(キャンプのあと、次の階に使う)
+let floorRoute = STAIR_ROUTES[0]; // 今いる階の道(ステータス欄に表示。効果はこの階だけ)
+
+// 今いる階の道の効果 key(書いていなければ def)
+function routeFx(key, def) {
+  const v = floorRoute.fx && floorRoute.fx[key];
+  return v === undefined ? def : v;
+}
+
+// 深い穴で落ちる先:routeHoleFloors 階下
+//   途中にエリートの階(10・20 …階)があれば、飛び越えずにそこで止まる。goalDepth より深くはならない
+function holeTarget(d) {
+  const last = Math.min(BALANCE.goalDepth, d + BALANCE.routeHoleFloors);
+  for (let x = d + 1; x < last; x++) {
+    if (isEliteFloor(x)) return x;
+  }
+  return last;
+}
+
+// 階段を降りたとき:道を選ぶ画面を出す(必ず出る道 + ランダムに1〜2個)
+function openRouteSelect() {
+  const pool = STAIR_ROUTES.filter(r => !r.always && (!r.available || r.available()));
+  const count = Math.min(pool.length, randInt(BALANCE.routeExtraMin, BALANCE.routeExtraMax));
+  const picked = [];
+  while (picked.length < count) picked.push(pool.splice(randInt(0, pool.length - 1), 1)[0]);
+  // 並び順は STAIR_ROUTES に書いた順にそろえる
+  routeChoices = STAIR_ROUTES.filter(r => r.always || picked.includes(r));
+  routeCursor = 0;
+  screenMode = "route";
+  render();
+}
+
+// 道を選ぶ画面で Enter:道を決めて、キャンプへ
+function chooseRoute() {
+  nextRoute = routeChoices[routeCursor];
+  addLog(`${nextRoute.name}を選んだ`);
+  questEvent("onRoute", nextRoute); // 「険しい道を〇回選ぶ」の依頼
+  openCamp();
+}
+
+// 次に降りる階(深い穴なら何階か下)
+function nextDepth() {
+  return nextRoute && nextRoute.fall ? holeTarget(depth) : depth + 1;
+}
+
+// 新しい階へ移る(キャンプのあと・デバッグ)。route:その階の道
+function goToFloor(newDepth, route = STAIR_ROUTES[0]) {
+  const prev = depth;
+  depth = newDepth;
+  floorRoute = route;
+  onNewFloorBuffs(); // 砥石・狂熱の香薬はこの階まで。忍び足の香は残りの階数が1つ減る
+  makeMap();
+  addLog(route.fall ? `深い穴に飛びこんだ…地下${depth}階まで落ちてきた` : `地下${depth}階に降りた`);
+  if (layerOf(depth) !== layerOf(prev)) addLog(`――${layerOf(depth).name}に入った。ここから先は、さらに厳しくなる`);
+  announceElite();
+  announceGrave();
+  questEvent("onFloor"); // 到達の依頼
 }
 
 // ==================== キャンプ ====================
@@ -356,21 +478,19 @@ function chooseCamp() {
     return;
   }
   turn += 1;
-  // 毒・衰弱はキャンプで治る
-  if (playerPoison || playerWeak) {
-    playerPoison = null;
+  // 毒・やけど・衰弱・鈍足はキャンプで治る
+  const hadDots = cureDots();
+  if (hadDots || playerWeak || playerSlow) {
     playerWeak = null;
+    playerSlow = null;
     addLog("キャンプで一息ついて、体の調子が戻った");
   }
   if (opt.pickEquip) opt.apply(campEquipList()[campPickCursor]);
   else opt.apply();
   campPicking = false;
-  depth += 1;
-  makeMap();
-  addLog(`地下${depth}階に降りた`);
-  if (layerOf(depth) !== layerOf(depth - 1)) addLog(`――${layerOf(depth).name}に入った。ここから先は、さらに厳しくなる`);
-  announceElite();
-  announceGrave();
+  // 選んだ道で、次の階へ(深い穴なら何階か下へ)
+  goToFloor(nextDepth(), nextRoute || STAIR_ROUTES[0]);
+  nextRoute = null;
   screenMode = "dungeon";
   render();
 }

@@ -39,7 +39,7 @@ function makeEquipment(data, d, forceCursed = false) {
   // baseStats:強化する前の性能(刻むときはこちらを使う) / plus:キャンプで強化した回数(上限なし)
   // effects:呪われた装備の効果([{ id, value }]。普通の装備は空)
   // 最初から付いている効果(equipment.js の effects)はそのままの強さ
-  // block:盾だけ。向いている方向から飛んでくる矢・炎のダメージを減らす割合(%)
+  // block:盾だけ。向いている方向から飛んでくる矢・炎・属性の球のダメージを減らす割合(%)
   const eq = { id: data.id, name: data.name, slot: data.slot, stats, rolls, baseStats: { ...stats }, plus: 0,
                effects: (data.effects || []).map(fx => ({ ...fx })) };
   if (data.block) eq.block = data.block;
@@ -174,7 +174,8 @@ function pickUpEquipment(eq, countFound = true) {
     return;
   }
   if (base.settings.autoEquip) {
-    const empty = ITEM_TYPES[eq.slot].slots.find(s => !equipped[s]);
+    // 鍛冶屋の装備を着けている枠も「空いている」とみなす(拾った装備に付け替える)
+    const empty = ITEM_TYPES[eq.slot].slots.find(s => !equipped[s]) || ITEM_TYPES[eq.slot].slots.find(s => equipped[s].smith);
     if (empty) changeEquip(empty, eq);
   }
 }
@@ -217,7 +218,8 @@ function closeInventory() {
 function invTabItems() {
   const tab = INV_TABS[invTab].id;
   if (tab === "equip") return Object.keys(EQUIP_SLOTS);
-  if (tab === "tool") return potions > 0 ? [{ kind: "potion" }] : [];
+  // 道具タブ:回復薬と、道具屋で買って持ってきた道具
+  if (tab === "tool") return [...(potions > 0 ? [{ kind: "potion" }] : []), ...runTools.map((t, index) => ({ kind: "tool", index }))];
   return []; // 素材・その他はまだない
 }
 
@@ -301,6 +303,15 @@ function useToolSelected() {
     usePotion();
     clampInvCursor();
     render();
+  } else if (tool.kind === "tool") {
+    // 道具屋で買った道具(キャンプ・分かれ道では使えない)
+    if (invReturnMode !== "dungeon") {
+      addLog("今は道具を使えない");
+      render();
+      return;
+    }
+    invCursor = 0;
+    useRunTool(tool.index);
   }
 }
 
@@ -315,6 +326,28 @@ function materialStats(eq) {
   return stats;
 }
 
+// 刻んだときの刻印の名前
+//   敵の固有装備:equipment.js の materialName(その装備だけの名前。例:小鬼の牙)
+//   それ以外:個体差の平均でレア度を決めて「輝く胴の刻印」のような名前(BALANCE.materialRanks)
+function materialNameFor(eq) {
+  const data = equipmentList.find(e => e.id === eq.id);
+  if (data && data.materialName) return data.materialName;
+  return `${materialRankOf(eq).word}${ITEM_TYPES[eq.slot].name}の刻印`;
+}
+
+// 装備の個体差の平均(%)から、刻印のレア度(BALANCE.materialRanks の1つ)を決める
+function materialRankOf(eq) {
+  const rolls = Object.values(eq.rolls || {});
+  const avg = rolls.length > 0 ? rolls.reduce((a, b) => a + b, 0) / rolls.length * 100 : 0;
+  const ranks = BALANCE.materialRanks;
+  return ranks.find(r => avg >= r.minRoll) || ranks[ranks.length - 1];
+}
+
+// 名前を持っていない古い刻印に付ける名前(例:胴の刻印)
+function defaultMaterialName(slot) {
+  return `${ITEM_TYPES[slot].name}の刻印`;
+}
+
 // この冒険で、死んだときに刻める数(エリートを倒した数だけ増える)
 function refineCount() {
   return BALANCE.refineBase + (runStats ? runStats.elitesKilled : 0);
@@ -326,15 +359,20 @@ const REFINE_TABS = [
   { id: "spare", name: "持ち物" },
 ];
 
-// 死んだときに着けていた装備(枠の順:武器 → 盾 → 頭 …)
+// 刻める装備(この冒険で手に入れた装備のうち、鍛冶屋の装備ではないもの)
+function refinablePickups() {
+  return runPickups.filter(eq => !eq.smith);
+}
+
+// 死んだときに着けていた装備(枠の順:武器 → 盾 → 頭 …)。鍛冶屋の装備は刻めないので入れない
 function refineWorn() {
-  return Object.keys(EQUIP_SLOTS).map(s => equipped[s]).filter(eq => eq && runPickups.includes(eq));
+  return Object.keys(EQUIP_SLOTS).map(s => equipped[s]).filter(eq => eq && !eq.smith && runPickups.includes(eq));
 }
 
 // 着けていなかった装備。type を渡すと、その部位のものだけ
 function refineSpare(type = null) {
   const worn = refineWorn();
-  return runPickups.filter(eq => !worn.includes(eq) && (!type || eq.slot === type));
+  return refinablePickups().filter(eq => !worn.includes(eq) && (!type || eq.slot === type));
 }
 
 // 刻む画面で、今選べる装備の一覧
@@ -362,15 +400,16 @@ function refineSelected() {
   turn += 1;
   // 新しい刻印を1個作って、ストックに追加する
   // 呪われた装備の効果(良い効果も呪いも)は、そのままの強さで刻印に引き継ぐ
-  const mat = { slot: eq.slot, stats: materialStats(eq), effects: (eq.effects || []).map(fx => ({ ...fx })),
+  // name:刻印の名前 / sources:元の装備の id の一覧(equipment.js の id。合成すると2つになる。一族のセット効果に使う)
+  const mat = { slot: eq.slot, name: materialNameFor(eq), sources: [eq.id], stats: materialStats(eq), effects: (eq.effects || []).map(fx => ({ ...fx })),
                 plus: 0, fused: false, isNew: true }; // isNew:まだ一覧で見ていない印
   base.materials.push(mat);
-  addLog(`${equipName(eq)}を刻んだ！ [${ITEM_TYPES[mat.slot].name}]刻印(${statsText(mat.stats)})を手に入れた`);
+  addLog(`${equipName(eq)}を刻んだ！ 刻印「${mat.name}」(${statsText(mat.stats)})を手に入れた`);
   saveGame();
-  // 刻んだ装備は一覧から消す。まだ刻めて、装備も残っていれば続けて選ぶ
+  // 刻んだ装備は一覧から消す。まだ刻めて、刻める装備も残っていれば続けて選ぶ
   runPickups = runPickups.filter(x => x !== eq);
   refineLeft -= 1;
-  if (refineLeft > 0 && runPickups.length > 0) {
+  if (refineLeft > 0 && refinablePickups().length > 0) {
     if (refineType && refineSpare(refineType).length === 0) {
       // その部位がなくなったら、部位の一覧に戻る(カーソルはその部位に)
       refineCursor = Object.keys(ITEM_TYPES).indexOf(refineType);
@@ -381,6 +420,7 @@ function refineSelected() {
     const rows = REFINE_TABS[refineTab].id === "spare" && !refineType ? Object.keys(ITEM_TYPES).length : refineList().length;
     refineCursor = Math.max(0, Math.min(refineCursor, rows - 1));
   } else {
+    salvageLeftovers(); // 刻まなかった装備は、少しの素材になる
     goToTown();
   }
   render();
@@ -392,8 +432,9 @@ function refineSelected() {
 function gainMonsterResource(m) {
   const id = m.data.material;
   if (!id) return;
-  // 特性「拾い上手」で +1(エリートは、それも含めて10倍)
-  const amount = ((m.data.materialAmount || 1) + traitMax("bonusMaterial", 0)) * (m.elite ? BALANCE.eliteMaterialMultiplier : 1);
+  // 特性「拾い上手」で +1(エリートは、それも含めて10倍)。険しい道ではさらに倍
+  const amount = Math.round(((m.data.materialAmount || 1) + traitMax("bonusMaterial", 0))
+    * (m.elite ? BALANCE.eliteMaterialMultiplier : 1) * routeFx("materialRate", 1));
   base.resources[id] = (base.resources[id] || 0) + amount;
   runStats.resources[id] = (runStats.resources[id] || 0) + amount;
   addLog(`${RESOURCE_TYPES[id].name}を${amount}個手に入れた`);
@@ -425,10 +466,14 @@ function materialMarks(mat) {
   return h;
 }
 
-// 刻印の性能(ステータスと、呪われた装備から引き継いだ効果)
+// 刻印の名前と性能(ステータスと、呪われた装備から引き継いだ効果)。名前がなければ性能だけ
+//   強化値や「呪」「浄化」の印は materialMarks で、名前とは別に出す
+//   一族の固有装備から刻んだ刻印は、名前のあとに一族の札(一族の色で、短い名前。例:[ゴブリン][不死])
 function materialStatsHTML(mat) {
+  const clans = materialClans(mat).map(c => `${clanBadgeHTML(c)} `).join("");
+  const name = mat.name ? `${span("mat-name", mat.name)} ${clans}` : clans;
   const fx = mat.effects && mat.effects.length ? ` ${effectsHTML(mat.effects, true)}` : "";
-  return `${statsHTML(mat.stats)}${fx}`;
+  return `${name}${statsHTML(mat.stats)}${fx}`;
 }
 
 // 刻印の性能の合計(一覧を並べる順番に使う)
@@ -467,7 +512,7 @@ function purifyMaterial(mat) {
   base.resources.holy -= cost;
   mat.effects = mat.effects.filter(fx => EFFECTS[fx.id].kind !== "curse");
   mat.purified = true;
-  addLog(`[${ITEM_TYPES[mat.slot].name}]刻印を浄化した！ 呪いが消えた`);
+  addLog(`刻印「${mat.name}」を浄化した！ 呪いが消えた`);
   saveGame();
 }
 
@@ -520,10 +565,50 @@ function enhanceMaterial(mat) {
     return;
   }
   base.resources[c.id] -= c.cost;
+  mat.spent = (mat.spent || 0) + c.cost; // 強化に使った素材の合計(解体したときに半分戻る)
   const pct = rollEnhancePercent();
   const diff = applyEnhance(mat.stats, pct);
   mat.plus += 1;
-  addLog(`${pct >= 13 ? "大成功！ " : ""}[${ITEM_TYPES[mat.slot].name}]刻印を+${mat.plus}に強化した(+${pct}%) ${diff}`);
+  addLog(`${pct >= 13 ? "大成功！ " : ""}刻印「${mat.name}」を+${mat.plus}に強化した(+${pct}%) ${diff}`);
+  saveGame();
+}
+
+// ==================== 解体(サルベージ) ====================
+// 刻印を素材に戻す。戻るのは「刻印の価値」の半分(salvageRate)。その種類の刻印を強化するときに使う素材で戻る
+//   刻印の価値 = salvageBaseValue(合成したものは2個分)+ 強化に使った素材の合計(spent)
+function salvageValue(mat) {
+  const value = BALANCE.salvageBaseValue * (mat.fused ? 2 : 1) + (mat.spent || 0);
+  return Math.max(1, Math.floor(value * BALANCE.salvageRate));
+}
+
+// 刻印を解体する(確認してから)。枠にセットしていたら外れる
+function salvageMaterial(mat) {
+  const resId = ITEM_TYPES[mat.slot].resource;
+  const amount = salvageValue(mat);
+  if (!confirm(`刻印「${mat.name}」を解体して、${RESOURCE_TYPES[resId].name}${amount}個にしますか？(元に戻せません)`)) return false;
+  for (const s in base.materialSet) {
+    if (base.materialSet[s] === mat) delete base.materialSet[s];
+  }
+  base.materials = base.materials.filter(x => x !== mat);
+  base.resources[resId] = (base.resources[resId] || 0) + amount;
+  addLog(`刻印「${mat.name}」を解体した。${RESOURCE_TYPES[resId].name}を${amount}個手に入れた`);
+  saveGame();
+  return true;
+}
+
+// 冒険が終わって拠点に戻るとき:刻まなかった装備を、少しの素材にする(1個につき leftoverSalvageAmount。その部位の素材)
+//   鍛冶屋の装備は素材にならない(ゴールドで安く作れるので、素材に化けると強すぎるため)
+function salvageLeftovers() {
+  const left = refinablePickups();
+  runPickups = [];
+  if (left.length === 0) return;
+  const got = {};
+  for (const eq of left) {
+    const id = ITEM_TYPES[eq.slot].resource;
+    got[id] = (got[id] || 0) + BALANCE.leftoverSalvageAmount;
+  }
+  for (const id in got) base.resources[id] = (base.resources[id] || 0) + got[id];
+  addLog(`刻まなかった装備${left.length}個を、素材にした(${Object.keys(got).map(id => `${RESOURCE_TYPES[id].name}+${got[id]}`).join(" ")})`);
   saveGame();
 }
 
@@ -545,18 +630,22 @@ function fusedStats(a, b) {
 }
 
 // 同じ種類の刻印2個を、1個にまとめる
-//   性能は足し算(強化した分も含む)。強化値は +0 に戻るので、さらに強化できる。もう合成・分解はできない
+//   性能は足し算(強化した分も含む)。強化値は +0 に戻るので、さらに強化できる。もう合成はできない(解体はできる)
 //   どちらかが枠にセットされていたら、できた刻印をその枠にセットし直す
 //   2個とも別々の枠(指輪1と指輪2など)にセットされていたら、片方の枠は空になる(ログで知らせる)
 function fuseMaterials(a, b) {
-  const mat = { slot: a.slot, stats: fusedStats(a, b), effects: mergeEffects(a.effects, b.effects), plus: 0, fused: true,
+  // 名前は2つの名前を合わせたもの(例:小鬼の牙と誓いの紋章)
+  // 元の装備の一覧も合わせる(一族が合わさる)
+  // spent:強化に使った素材は、2つ分を合わせる(解体したときの価値になる)
+  const mat = { slot: a.slot, name: `${a.name}と${b.name}`, sources: [...(a.sources || []), ...(b.sources || [])],
+                spent: (a.spent || 0) + (b.spent || 0), stats: fusedStats(a, b), effects: mergeEffects(a.effects, b.effects), plus: 0, fused: true,
                 purified: !!(a.purified || b.purified) };
   const setSlots = Object.keys(base.materialSet).filter(s => base.materialSet[s] === a || base.materialSet[s] === b);
   for (const s of setSlots) delete base.materialSet[s];
   base.materials = base.materials.filter(x => x !== a && x !== b);
   base.materials.push(mat);
   if (setSlots.length > 0) base.materialSet[setSlots[0]] = mat;
-  addLog(`[${ITEM_TYPES[mat.slot].name}]刻印を合成した！ ${statsText(mat.stats)}`);
+  addLog(`刻印を合成した！「${mat.name}」 ${statsText(mat.stats)}`);
   if (setSlots.length > 1) {
     addLog(`合成した刻印は${EQUIP_SLOTS[setSlots[0]]}にセットした。${EQUIP_SLOTS[setSlots[1]]}の枠は空になったので、別の刻印をセットしてください`);
   }
