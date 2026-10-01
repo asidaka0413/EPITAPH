@@ -193,3 +193,28 @@ kbd {
   .dex-list { border-right: none; border-bottom: 1px solid #2c2c38; padding: 0 0 8px; max-height: 30vh; overflow-y: auto; }
   .dex-detail { position: static; }
 }
+
+/* ==================== スマホの操作ボタン(js/touch.js) ==================== */
+/* タッチ画面のときだけ、画面の下に固定して出す。ページの下に、ボタンで隠れる分の余白をあける */
+body.touch { padding-bottom: 210px; }
+#touch-pad {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); /* env(…):iPhone の画面下のバーにかからないように */
+  background: rgba(12, 12, 16, 0.94); border-top: 1px solid #2c2c38;
+}
+/* 十字キー:3×3 のマスに並べる */
+.touch-dpad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 4px; }
+/* 右のボタン:2列 */
+.touch-act { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; flex: 1; max-width: 220px; }
+.touch-btn {
+  font-family: inherit; font-size: 18px; color: #ddd; background: #1d1d26;
+  border: 1px solid #44445a; border-radius: 8px; padding: 0; min-height: 48px;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; /* 長押しで文字が選ばれたり、メニューが出たりしないように */
+}
+.touch-act .touch-btn { font-size: 14px; }
+.touch-btn.small { font-size: 13px; }
+.touch-btn.main { background: #2e6b3a; border-color: #4cd964; color: #fff; }       /* 決定 */
+.touch-btn.danger-btn { color: #ff8a8a; border-color: #6b2e2e; font-size: 12px; }  /* 自害 */
+.touch-btn.pressed { background: #3a3a50; }
+.touch-btn.main.pressed { background: #3f8f4f; }

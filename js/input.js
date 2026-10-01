@@ -1,4 +1,4 @@
-// キー操作・自害(X 長押し)・起動
+// キー操作・自害(X 長押し)・起動(スマホの操作ボタンは js/touch.js。押されると、ここの pressKey を呼ぶ)
 // index.html から <script src> で読み込まれる(読み込む順番は index.html に書いてある)
 
 // ==================== 入力処理 ====================
@@ -62,34 +62,40 @@ document.addEventListener("keydown", (e) => {
   const key = KEY_ALIASES[e.key] || e.key;
   // 矢印キー・スペース・バックスペースで、ページがスクロールしたり戻ったりしないようにする
   if (key.startsWith("Arrow") || key === "Enter" || key === "Escape") e.preventDefault();
+  pressKey(key, e.repeat);
+});
+
+// キーが押されたとき(キーボードでも、スマホの操作ボタン(js/touch.js)でも、ここを通る)
+//   key:KEY_ALIASES で置き換えたあとのキー / repeat:押しっぱなしの繰り返しなら true
+function pressKey(key, repeat) {
   // 押しっぱなしの Enter / Space は無視する(分かれ道 → キャンプ、リザルト → 刻む が勝手に決まらないように)
-  if (e.repeat && key === "Enter") return;
+  if (repeat && key === "Enter") return;
   // 分かれ道・キャンプでは、押しっぱなしの矢印も無視する(移動キーを押したまま階段に乗ったとき、選んでいる道が動かないように)
-  if (e.repeat && (screenMode === "route" || screenMode === "camp") && key.startsWith("Arrow")) return;
+  if (repeat && (screenMode === "route" || screenMode === "camp") && key.startsWith("Arrow")) return;
   // X を押し始めたら自害のカウント開始(押しっぱなしの繰り返しは無視)
   if (key === "x" || key === "X") {
-    if (!e.repeat) startGiveUp();
+    if (!repeat) startGiveUp();
     return;
   }
   // F で、敵の視界と攻撃範囲の表示を切り替える(ダンジョンだけ。押しっぱなしの繰り返しは無視)
   if (key === "f" || key === "F") {
-    if (!e.repeat && screenMode === "dungeon") {
+    if (!repeat && screenMode === "dungeon") {
       threatView = !threatView;
       render();
     }
     return;
   }
-  // ダンジョンで移動キー・ターンスキップを押しっぱなしにしたとき(e.repeat)
+  // ダンジョンで移動キー・ターンスキップを押しっぱなしにしたとき(repeat)
   //   ・moveRepeatMs ミリ秒に1回までしか動かない(速く動きすぎないように)
   //   ・敵が隣にいたら止まる(押しっぱなしのまま敵に突っこまないように。攻撃するときは押し直す)
-  if (e.repeat && screenMode === "dungeon" && (key.startsWith("Arrow") || isWaitKey(key))) {
+  if (repeat && screenMode === "dungeon" && (key.startsWith("Arrow") || isWaitKey(key))) {
     const now = performance.now();
     if (now - lastRepeatMoveAt < BALANCE.moveRepeatMs) return;
     if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => monsterAt(px + dx, py + dy))) return;
     lastRepeatMoveAt = now;
   }
   handleKey({ key });
-});
+}
 
 // ターンスキップのキーか(Z か .)
 function isWaitKey(key) {
@@ -238,6 +244,7 @@ if (typeof EQUIPMENT_DATA === "undefined" || typeof MONSTER_DATA === "undefined"
   screenEl.style.height = `${BALANCE.mapHeight * 1.15}em`;
 
   initTooltip(); // マップにマウスを合わせたときの詳細ウィンドウ
+  initTouchPad(); // スマホなどのタッチ画面なら、画面の下に操作ボタンを出す
 
   const warnings = loadGameData();
   addLog(loadGame()); // セーブデータを読み込む

@@ -2,22 +2,46 @@
 // index.html から <script src> で読み込まれる(読み込む順番は index.html に書いてある)
 
 // ==================== ツールチップ ====================
-// ダンジョンのマップで、マウスカーソルを敵や物の上に合わせると、そばに小さなウィンドウで詳細を出す
+// ダンジョンのマップで、マウスカーソルを敵や物の上に合わせると、そばに小さなウィンドウで詳細を出す(スマホではタップ)
 //   マウスの位置から「どのマスか」を計算するので、マップを描く処理には手を入れていない
 //   キーボードの操作には関係しない(マウスを動かしたときと、画面を描き直したときに中身を更新するだけ)
 let tipMouse = null; // 最後のマウスの位置 { x, y }(画面の左上からのピクセル。マップの外に出たら null)
+let tipByTouch = false; // スマホでタップして出したか(指で隠れないよう、タップした場所の上側に出す)
 
 // 起動したときに1回だけ呼ぶ:マップの上でマウスが動いたら、ツールチップを更新する
+//   スマホ(タッチ画面)では、マップのマスをタップすると出す。同じマスをもう一度タップするか、マップの外をタップすると消える
 function initTooltip() {
   const screenEl = document.getElementById("screen");
   screenEl.addEventListener("mousemove", (e) => {
+    if (isTouchDevice()) return; // スマホでタップしたときにも mousemove が来るので、無視する(タップで出す)
     tipMouse = { x: e.clientX, y: e.clientY };
+    tipByTouch = false;
     updateTooltip();
   });
   screenEl.addEventListener("mouseleave", () => {
-    tipMouse = null;
+    if (isTouchDevice()) return;
+    hideTooltip();
+  });
+  // タップ:そのマスの詳細を出す(同じマスなら消す)
+  screenEl.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    const before = tileUnderMouse();
+    tipMouse = { x: e.clientX, y: e.clientY };
+    tipByTouch = true;
+    const now = tileUnderMouse();
+    if (before && now && before.x === now.x && before.y === now.y) tipMouse = null;
     updateTooltip();
   });
+  // マップの外をタップしたら消す
+  document.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse" && !screenEl.contains(e.target)) hideTooltip();
+  });
+}
+
+// ツールチップを消す(マウスがマップの外に出たとき・スマホで操作ボタンを押したときなど)
+function hideTooltip() {
+  tipMouse = null;
+  updateTooltip();
 }
 
 // マウスがあるマップのマス { x, y }(ダンジョン画面でないときや、マップの外なら null)
@@ -43,8 +67,15 @@ function updateTooltip() {
   tip.innerHTML = html;
   tip.style.display = "block";
   // カーソルの右下に出す。画面の端からはみ出すなら、左側・上側に出す
+  //   タップで出したときは、指で隠れないように、タップした場所の上側に出す(上に入らなければ下側)
   const gap = 14;
   let left = tipMouse.x + gap, top = tipMouse.y + gap;
+  if (tipByTouch) {
+    left = tipMouse.x - tip.offsetWidth / 2;
+    top = tipMouse.y - tip.offsetHeight - gap * 2;
+    if (top < 4) top = tipMouse.y + gap * 2;
+    left = Math.min(left, window.innerWidth - tip.offsetWidth - 4);
+  }
   if (left + tip.offsetWidth > window.innerWidth - 4) left = tipMouse.x - tip.offsetWidth - gap;
   if (top + tip.offsetHeight > window.innerHeight - 4) top = tipMouse.y - tip.offsetHeight - gap;
   tip.style.left = `${Math.max(4, left)}px`;
