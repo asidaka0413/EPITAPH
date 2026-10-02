@@ -28,7 +28,7 @@
 const CLAN_DATA = [
   {
     id: "goblins", name: "ゴブリン一族", short: "ゴブリン", color: "#6fcf5f", // 緑系
-    colors: { goblin: "#6fcf5f", caller: "#b5e070", archer: "#3fb88a", chieftain: "#a0f070" },
+    colors: { goblin: "#6fcf5f", caller: "#b5e070", archer: "#3fb88a", chieftain: "#a0f070", hobgoblin: "#4e9a42", goblinking: "#c8ff90", goblinshaman: "#80e0a0", goblinsniper: "#5fd0a0" },
     sets: [
       { count: 2, desc: "盾で防ぐ% +10", shieldBlock: 10 },
       { count: 4, desc: "ゴブリンの呼び子の角笛が効かない", alarmImmune: true },
@@ -36,7 +36,7 @@ const CLAN_DATA = [
   },
   {
     id: "beasts", name: "獣", short: "獣", color: "#c8a070", // 茶色系
-    colors: { rat: "#c8a070", bat: "#9c8060", spider: "#e6c49a", slime: "#b89040", basilisk: "#a87850", direwolf: "#8c7a6a" },
+    colors: { rat: "#c8a070", bat: "#9c8060", spider: "#e6c49a", slime: "#b89040", basilisk: "#a87850", direwolf: "#8c7a6a", shadowbat: "#6e5a4a", manticore: "#d8a860", hellhound: "#946850", chimera: "#d4b078", hydra: "#7a6a50" },
     sets: [
       { count: 2, desc: "AGL+60", stats: { agl: 60 } },
       { count: 4, desc: "毒が半分のターンで抜ける", poisonHalf: true },
@@ -44,7 +44,7 @@ const CLAN_DATA = [
   },
   {
     id: "undead", name: "不死", short: "不死", color: "#b8d0ff", // 青白系
-    colors: { wisp: "#9cc8ff", skeleton: "#e4ecf8", wraith: "#b0b8ff", vampire: "#d0c8ff", necromancer: "#8c98e0" },
+    colors: { wisp: "#9cc8ff", skeleton: "#e4ecf8", wraith: "#b0b8ff", vampire: "#d0c8ff", necromancer: "#8c98e0", banshee: "#c8f0ff", lich: "#7c88d0", dullahan: "#a8b8e8", ghoul: "#8890b8", dragonzombie: "#9cb89c" },
     sets: [
       { count: 2, desc: "衰弱にならない", weakenImmune: true },
       { count: 4, desc: "食いしばり(1回の冒険で1度だけ、死ぬダメージをHP1で耐える。書の食いしばりと重ねても1回だけ)", guts: true },
@@ -52,7 +52,7 @@ const CLAN_DATA = [
   },
   {
     id: "heavy", name: "重装", short: "重装", color: "#a8acb4", // 灰色系
-    colors: { orc: "#a0a0a0", knight: "#dcdfe6", troll: "#80848a", golem: "#b4bccc", darkknight: "#6c7480" },
+    colors: { orc: "#a0a0a0", knight: "#dcdfe6", troll: "#80848a", golem: "#b4bccc", darkknight: "#6c7480", minotaur: "#c0b0a0", irongiant: "#c8ccd4", behemoth: "#909498", gargoyle: "#b8b0a0" },
     sets: [
       { count: 2, desc: "DEF+80", stats: { def: 80 } },
       { count: 4, desc: "爆発・火属性のダメージが半分(やけども)",
@@ -62,7 +62,7 @@ const CLAN_DATA = [
   {
     // 竜より格が上の「龍」の一族も、いずれ別に作る予定
     id: "dragons", name: "竜", short: "竜", color: "#e8603c", // 赤橙系
-    colors: { salamander: "#ff7a50", lizardman: "#d05a3a", wyvern: "#f09060", drake: "#ff4a3a" },
+    colors: { salamander: "#ff7a50", lizardman: "#d05a3a", wyvern: "#f09060", drake: "#ff4a3a", dragonkin: "#e07848" },
     sets: [
       { count: 2, desc: "やけどにならない", burnImmune: true },
       { count: 4, desc: "ブレスのダメージが半分(属性に関係なく)", damageCut: [{ category: "breath", rate: 0.5 }] },
@@ -71,7 +71,7 @@ const CLAN_DATA = [
   {
     // どの一族にも属さない、はぐれた者たち。セット効果はない
     id: "outcasts", name: "はぐれ者", short: "はぐれ", color: "#c9a227", // 黄土色系(呪いの紫と紛れないように)
-    colors: { thief: "#c9a227", bomber: "#e8c020" },
+    colors: { thief: "#c9a227", bomber: "#e8c020", assassin: "#a88a20", bigbomber: "#f0d850", berserker: "#d0a030", banditboss: "#b89a50" },
     sets: [],
   },
 ];

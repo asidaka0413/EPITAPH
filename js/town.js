@@ -13,7 +13,9 @@ const TOWN_MENU = [
         : `最高 ${depthLabel(base.records.bestDepth)}${base.records.clears > 0 ? `　踏破 ${base.records.clears}回` : ""}`
           + `${base.grave && base.grave.relic && !base.grave.relicTaken ? `　墓 地下${base.grave.depth}階` : ""}`;
       const tools = base.shop.built ? `　道具 ${base.carry.filter(c => c).length}/${BALANCE.carrySlots}` : "";
-      return `${rec}\n依頼 ${base.quests.accepted.length}${tools}　刻印 ${Object.keys(base.materialSet).length}/${Object.keys(EQUIP_SLOTS).length}`;
+      // 刻印の空きが少なくて潜れないときは、3行目に出す
+      const full = materialsNearFull() ? `\n⚠ 刻印が多すぎて潜れない(${base.materials.length}/${BALANCE.materialMax}個。制作で解体・合成を)` : "";
+      return `${rec}\n依頼 ${base.quests.accepted.length}${tools}　刻印 ${Object.keys(base.materialSet).length}/${Object.keys(EQUIP_SLOTS).length}${full}`;
     } },
   { id: "player",   name: "プレイヤー",
     summary: () => `Lv.${base.level}　スキルポイント ${base.skillPoints}　刻印 ${Object.keys(base.materialSet).length}/${Object.keys(EQUIP_SLOTS).length}`,
@@ -24,9 +26,11 @@ const TOWN_MENU = [
     summary: () => base.shop.built ? `持ちこみ枠 ${base.carry.filter(c => c).length}/${BALANCE.carrySlots}` : "まだない(素材で建てられる)" },
   { id: "smithy",   name: "鍛冶屋",
     summary: () => base.smithy.built ? `注文 ${Object.keys(base.smithOrders).length}/${Object.keys(EQUIP_SLOTS).length}　腕前 ${smithQualityText(base.smithy.level)}` : "まだない(素材で建てられる)" },
-  { id: "craft",    name: "制作",   summary: () => "刻印の強化・合成・解体・浄化", gapAfter: true },
+  { id: "craft",    name: "制作",   summary: () => `刻印の強化・合成・解体・浄化　刻印 ${base.materials.length}/${BALANCE.materialMax}個`, gapAfter: true },
   { id: "dex",      name: "図鑑",
     summary: () => DEX_TABS.map(t => `${t.name} ${dexCount(t.id)}/${dexEntries(t.id).length}`).join("　") },
+  { id: "achieve",  name: "実績",
+    summary: () => `達成 ${achievementCount()}/${achievementList.length}` },
   { id: "help",     name: "遊び方",
     summary: () => base.records.runs === 0 ? "はじめての人は、まずここ" : "操作と仕組みの説明" },
   { id: "settings", name: "設定",   summary: () => "" },
@@ -130,8 +134,10 @@ function dexEntries(tab) {
   if (tab === "monster") return monsterList;
   if (tab === "equip") {
     // 装備の種類の順(武器が一番上)。同じ種類の中は equipment.js に書いた順
+    //   隠し装備(hidden)は、一度拾うまで一覧に出さない
     const order = Object.keys(ITEM_TYPES);
-    return equipmentList.slice().sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot));
+    return equipmentList.filter(e => !e.hidden || base.records.equipFound[e.id])
+      .sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot));
   }
   return bookList;
 }
@@ -249,12 +255,14 @@ function exchangeBook(recipe) {
 }
 
 // 拠点の設定画面の項目。name:表示名 / value:右側に出す今の状態 / apply:Enter を押したときの処理
+//   shown:(省略できる)false を返すときは一覧に出さない
 const TOWN_SETTINGS = [
   { name: "拾ったとき、空いている枠に自動で装備",
     value: () => base.settings.autoEquip ? span("up", "ON") : span("dim", "OFF"),
     apply: () => toggleAutoEquip() },
   { name: "デバッグモード",
-    value: () => base.settings.debug ? span("up", "ON") : span("dim", "OFF"),
+    shown: () => DEBUG_ALLOWED, // アドレスに ?debug を付けて開いたときだけ(js/debug.js)
+    value: () => base.settings.debug ? `${span("up", "ON")} ${span("dim", "(実績は取れない)")}` : span("dim", "OFF"),
     apply: () => { base.settings.debug = !base.settings.debug; saveGame(); } },
   { name: "セーブデータを書き出す(ファイルに保存)",
     value: () => span("sub", "ほかの場所で遊ぶときに持っていける"),
@@ -267,10 +275,20 @@ const TOWN_SETTINGS = [
     apply: () => deleteSave() },
 ];
 
+// 設定画面に出す項目(shown が false のものを除く)
+function townSettings() {
+  return TOWN_SETTINGS.filter(item => !item.shown || item.shown());
+}
+
 // 拠点メニューで Enter
 function townMenuEnter() {
   const item = TOWN_MENU[townMenuCursor];
   if (item.id === "dive") {
+    // 刻印の空きが少ないと潜れない(死んだときに刻めなくならないように)
+    if (materialsNearFull()) {
+      addLog(`刻印が多すぎて潜れない(${base.materials.length}/${BALANCE.materialMax}個)。「制作」で解体・合成して、空きを${BALANCE.materialDiveFree}個以上にしてください`);
+      return;
+    }
     startNewRun();
     return;
   }
@@ -360,6 +378,19 @@ function townKey(e) {
     return;
   }
 
+  // 実績:←→ でタブ、↑↓ で一覧をスクロール
+  if (townPage === "achieve") {
+    const screenEl = document.getElementById("screen");
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      achieveTab = (achieveTab + (e.key === "ArrowRight" ? 1 : -1) + ACHIEVEMENT_TABS.length) % ACHIEVEMENT_TABS.length;
+      render();
+      screenEl.scrollTop = 0; // タブを替えたら、いちばん上から
+    } else if (e.key === "ArrowUp") screenEl.scrollTop -= 60;
+    else if (e.key === "ArrowDown") screenEl.scrollTop += 60;
+    else if (e.key === "Escape") backToTownMenu();
+    return;
+  }
+
   // 遊び方:←→ でタブ、↑↓ で説明をスクロール
   if (townPage === "help") {
     const screenEl = document.getElementById("screen");
@@ -375,8 +406,8 @@ function townKey(e) {
 
   if (townPage === "settings") {
     if (e.key === "ArrowUp") townCursor = Math.max(0, townCursor - 1);
-    else if (e.key === "ArrowDown") townCursor = Math.min(TOWN_SETTINGS.length - 1, townCursor + 1);
-    else if (e.key === "Enter") TOWN_SETTINGS[townCursor].apply();
+    else if (e.key === "ArrowDown") townCursor = Math.min(townSettings().length - 1, townCursor + 1);
+    else if (e.key === "Enter") townSettings()[townCursor].apply();
     else if (e.key === "Escape") { backToTownMenu(); return; }
     render();
     return;

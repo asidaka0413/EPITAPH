@@ -28,6 +28,8 @@ let refineCursor = 0;      // 刻む画面で選んでいる行の番号
 let refineTab = 0;         // 刻む画面で開いているタブの番号(REFINE_TABS の何番目か)
 let refineType = null;     // 刻む画面の持ち物タブで選んでいる部位(ITEM_TYPES の id。部位の一覧のときは null)
 let refineLeft = 0;        // 刻む画面で、あと何個刻めるか
+let refineDiscardFor = null; // 刻印がいっぱいのとき、刻もうとしている装備(代わりに解体する刻印を選んでいる最中。選んでいないときは null)
+let refineDiscardCursor = 0; // 解体する刻印を選ぶ一覧で選んでいる行の番号
 let campCursor = 0;        // キャンプ画面で選んでいる行の番号
 let townPage = "menu";     // 拠点で開いている画面(TOWN_MENU の id か "menu")
 let townMenuCursor = 0;    // 拠点メニューで選んでいる行の番号
@@ -40,6 +42,7 @@ let townPickTool = null;   // 持ちこむ道具を選んでいる最中の枠�
 let townAllocating = false; // スキルにポイントを振っている最中か
 let dexTab = 0;            // 図鑑で開いているタブの番号(DEX_TABS の何番目か)
 let helpTab = 0;           // 遊び方で開いているタブの番号(help.js の HELP_PAGES の何番目か)
+let achieveTab = 0;        // 実績で開いているタブの番号(achievements.js の ACHIEVEMENT_TABS の何番目か)
 let craftTab = 0;          // 制作で開いているタブの番号(CRAFT_TABS の何番目か)
 let craftType = null;      // 制作(強化・合成)で選んでいる刻印の種類(ITEM_TYPES の id。選んでいないときは null)
 let craftPickCursor = 0;   // 制作で、種類を選んだあとの刻印の一覧で選んでいる行の番号
@@ -58,6 +61,7 @@ function newRunStats() {
     damageTaken: 0,       // 受けたダメージの合計
     bestHit: 0,           // いちばん大きかった一撃
     bestHitCrit: false,   // その一撃が会心だったか
+    crits: 0,             // 会心の一撃の回数
     books: [],            // 手に入れた書の名前
     killedBy: null,       // 死因(倒された敵の名前)
     gutsUsed: false,      // 特性「食いしばり」をこの冒険で使ったか
@@ -137,11 +141,18 @@ function newBase() {
       kills: {},      // 敵の id → 倒した数
       bestHit: 0,     // いちばん大きかった一撃
       clears: 0,      // 踏破した回数(goalDepth 階の階段を降りた回数)
+      // 実績用(冒険中の分は、冒険が終わったときに足す。刻んだ数は刻むたび)
+      damageDealt: 0, // 与えたダメージの合計
+      damageTaken: 0, // 受けたダメージの合計
+      crits: 0,       // 会心の一撃の回数
+      engraved: 0,    // 刻んだ回数
       // 図鑑用
       seen: {},       // 出会った敵。敵の id → true
       equipFound: {}, // 拾ったことのある装備。装備の id → 拾った回数
       booksFound: {}, // 手に入れたことのある書。書の id → true
     },
+    // 取った実績(data/achievements.js)。実績の id → 取った日(「2026-10-02」の形)
+    achievements: {},
   };
 }
 let base = newBase();
@@ -205,8 +216,9 @@ function loadGameData() {
       warnings.push(`⚠ monsters.js:「${m.name}」の material「${m.material}」という素材はありません`);
       continue;
     }
-    if (m.clan && !clanList.some(c => c.id === m.clan)) {
-      warnings.push(`⚠ monsters.js:「${m.name}」の clan「${m.clan}」という一族はありません(sets.js の id を書いてください)`);
+    const badClan = [].concat(m.clan || []).find(id => !clanList.some(c => c.id === id)); // 一族は1つ(文字)か、2つ以上(配列)
+    if (badClan) {
+      warnings.push(`⚠ monsters.js:「${m.name}」の clan「${badClan}」という一族はありません(sets.js の id を書いてください)`);
       continue;
     }
     if (m.ability && !MONSTER_ABILITIES[m.ability.type]) {
@@ -267,6 +279,9 @@ function loadGameData() {
     }
     bookList.push(b);
   }
+
+  // 実績(js/achievements.js)
+  warnings.push(...loadAchievementData());
   return warnings;
 }
 
@@ -402,11 +417,15 @@ function loadGame() {
   base.settings = { ...fresh.settings, ...(b.settings || {}) };
   // これまでの記録
   const rec = b.records || {};
-  for (const key of ["runs", "bestDepth", "totalKills", "bestHit", "clears"]) base.records[key] = num(rec[key], 0);
+  for (const key of ["runs", "bestDepth", "totalKills", "bestHit", "clears", "damageDealt", "damageTaken", "crits", "engraved"]) base.records[key] = num(rec[key], 0);
   for (const id in (rec.kills || {})) base.records.kills[id] = num(rec.kills[id], 0);
   for (const id in (rec.seen || {})) base.records.seen[id] = true;
   for (const id in (rec.equipFound || {})) base.records.equipFound[id] = num(rec.equipFound[id], 0);
   for (const id in (rec.booksFound || {})) base.records.booksFound[id] = true;
+  // 取った実績(今はない実績の id も、そのまま残す)
+  for (const id in (b.achievements || {})) {
+    if (b.achievements[id]) base.achievements[id] = typeof b.achievements[id] === "string" ? b.achievements[id] : true;
+  }
   // 図鑑ができる前のセーブ:倒したことのある敵・持っている書は、図鑑に登録済みにする
   for (const id in base.records.kills) base.records.seen[id] = true;
   for (const id in (b.books || {})) base.records.booksFound[id] = true;

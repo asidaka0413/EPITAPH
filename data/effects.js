@@ -10,6 +10,7 @@
 //   min / max :強さの範囲
 //   stat  :(呪いだけ)ステータスを下げる呪いなら、そのステータス(hp / atk / def / luk / agl / crt)
 //   scale :true にすると、深い階で拾った装備ほど強さが大きくなる(装備の基礎値と同じ倍率)
+//   noRoll:true にすると、呪われた装備にランダムでは付かない(決まった装備にだけ、equipment.js の effects で付ける効果)
 //
 // 効果の働き方は id で決まっているので、新しい id を足したときは js/ のプログラムにも処理が必要
 //   (stat を書いた呪いは、処理を足さなくてもそのステータスを下げる)
@@ -21,6 +22,8 @@ const BLESSING_DATA = [
   { id: "dmgUp",     name: "剛力",     desc: "与えるダメージ+{v}%", min: 10, max: 25 },
   { id: "critDmg",   name: "急所狙い", desc: "会心のダメージ倍率+{v}%", min: 10, max: 30 },
   { id: "poisonHit", name: "毒刃",     desc: "攻撃すると20%の確率で敵を毒にする(5ターン、毎ターン{v}ダメージ)", short: "毒刃{v}", min: 5, max: 15, scale: true },
+  // 決まった装備にだけ付く効果(ランダムでは付かない)。value は 1 と書く
+  { id: "blindImmune", name: "影の目", desc: "盲目にならない", short: "盲目無効", min: 1, max: 1, noRoll: true },
 ];
 
 const CURSE_DATA = [

@@ -32,6 +32,7 @@ function resetPlayerStats() {
   potions = BALANCE.startPotions;
   equipped = {};
   runPickups = [];
+  runLumps = 0;
   invTab = 0;
   invCursor = 0;
   invPickSlot = null;
@@ -42,6 +43,7 @@ function resetPlayerStats() {
   playerBuffs = {};
   playerWeak = null;
   playerSlow = null;
+  playerBlind = null;
   facing = null;
 }
 

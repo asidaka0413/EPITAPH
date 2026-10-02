@@ -19,7 +19,7 @@ const TOOL_DATA = {
     use() {
       let lost = 0;
       for (const m of monsters) {
-        if (m.dormant || Math.abs(m.x - px) + Math.abs(m.y - py) > BALANCE.smokeRadius) continue;
+        if (m.dormant || m.disguised || Math.abs(m.x - px) + Math.abs(m.y - py) > BALANCE.smokeRadius) continue;
         if (m.hunting) lost += 1;
         m.hunting = false;
         m.justNoticed = false;
@@ -100,6 +100,16 @@ const TOOL_DATA = {
       return true;
     },
   },
+  // 宝の地図:敵が落とすだけで、道具屋では売らない(SHOP_ITEMS に入れない)。1枚ごとに書かれた階(mapDepth)を持つ
+  //   仕組みは js/treasuremap.js の「宝の地図」
+  treasureMap: {
+    name: "宝の地図", stack: 1, passive: true,
+    desc: "書かれた階に行くと、印(X)がある。乗ると宝を掘り出せる。その階を過ぎると使えなくなる",
+    use() {
+      addLog("宝の地図は、書かれた階で印(X)を探して使う");
+      return false;
+    },
+  },
   warp: {
     name: "転移の札", stack: 1,
     desc: "階段のとなりへ一瞬で移動する(エリートの階では使えない)",
@@ -140,6 +150,7 @@ function throwLine(range) {
 
 // 道具のダメージを敵に与える(倒したら killMonster、生きていれば気づく)
 function toolDamage(m, dmg, text, sneak) {
+  if (m.disguised) revealMimic(m, false); // 宝箱に化けたミミック:道具を当てると、噛みつかずに正体を現す
   meetMonster(m.data.id);
   if (m.dormant) wakeGuardian(m, "攻撃されて、");
   m.hp -= dmg;

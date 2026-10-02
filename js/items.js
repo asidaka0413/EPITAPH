@@ -15,25 +15,36 @@ function biasedRoll() {
 }
 
 // 装備データ(equipment.js の1行)から、実際に落ちている装備を1個作る(d:ドロップした階層)
-function makeEquipment(data, d, forceCursed = false) {
+//   rarity:レア度(RARITY_TYPES の1つ。謎の塊を鑑定したときだけ渡す。床・宝箱・敵の装備にはレア度は付かない)
+function makeEquipment(data, d, forceCursed = false, rarity = null) {
   // 5階ごとに一段階強くなる(1〜5階は段階0、6〜10階は段階1、…)
   const tier = Math.floor((d - 1) / BALANCE.equipTierFloors);
   const tierRate = 1 + tier * BALANCE.equipGrowthPerTier;
 
   // 呪われた装備:基礎値が高く、良い効果と呪いが1つずつ付く
-  const cursed = forceCursed || chance(BALANCE.cursedChance * 100);
+  //   謎の塊の装備(レア度つき)も lumpCursedChance で呪われる(レア度の性能に、呪いの分が上乗せ。呪われたミシックもある)
+  const cursed = forceCursed || chance((rarity ? BALANCE.lumpCursedChance : BALANCE.cursedChance) * 100);
   const cursedRate = cursed ? 1 + BALANCE.cursedStatBonus : 1;
+  // レア度:基礎値の倍率と、個体差の範囲が変わる(普通は今までの装備と同じ)
+  const special = rarity && rarity.id !== "common";
+  const rarityRate = rarity ? rarity.statRate : 1;
 
   const luck = luckPercent(getPlayerStats());
   const stats = {}, rolls = {};
   for (const key in data.stats) {
     // ステータスごとに、別々の個体差をかける
-    //   運(LUK)の%の確率で、もう1回引いて良いほうを採用する
-    let r = biasedRoll();
-    if (chance(luck)) r = Math.max(r, biasedRoll());
-    if (hasTrait("noBadRoll")) r = Math.max(0, r); // 特性「目利き」:マイナスにならない
-    const roll = r * BALANCE.equipVariance; // -0.2〜+0.2
-    stats[key] = Math.max(1, Math.round(data.stats[key] * tierRate * cursedRate * (1 + roll)));
+    let roll;
+    if (special) {
+      // レア度つき:rollMin〜rollMax の間(真ん中あたりが出やすい)
+      roll = rarity.rollMin + (rarity.rollMax - rarity.rollMin) * (biasedRoll() + 1) / 2;
+    } else {
+      //   運(LUK)の%の確率で、もう1回引いて良いほうを採用する
+      let r = biasedRoll();
+      if (chance(luck)) r = Math.max(r, biasedRoll());
+      if (hasTrait("noBadRoll")) r = Math.max(0, r); // 特性「目利き」:マイナスにならない
+      roll = r * BALANCE.equipVariance; // -0.2〜+0.2
+    }
+    stats[key] = Math.max(1, Math.round(data.stats[key] * tierRate * cursedRate * rarityRate * (1 + roll)));
     rolls[key] = roll;
   }
   // baseStats:強化する前の性能(刻むときはこちらを使う) / plus:キャンプで強化した回数(上限なし)
@@ -47,7 +58,53 @@ function makeEquipment(data, d, forceCursed = false) {
     eq.cursed = true;
     eq.effects = mergeEffects(eq.effects, rollCurseEffects(tierRate));
   }
+  // rarity:レア度の id(普通は付けない)。良い効果がレア度に応じて付く
+  if (special) {
+    eq.rarity = rarity.id;
+    eq.effects = mergeEffects(eq.effects, rollRarityEffects(rarity, tierRate));
+  }
   return eq;
+}
+
+// ==================== レア度 ====================
+// 謎の塊を鑑定すると、レア度つきの装備になる(レア度の表は config.js の RARITY_TYPES)
+function rarityById(id) {
+  return RARITY_TYPES.find(r => r.id === id) || null;
+}
+
+// 装備・刻印のレア度(普通・レア度なしは null。印や色を付けるものだけ返す)
+function rarityOf(item) {
+  const r = item && item.rarity ? rarityById(item.rarity) : null;
+  return r && r.id !== "common" ? r : null;
+}
+
+// レア度を weight(%)の確率で1つ選ぶ(運では変わらない)
+function rollRarity() {
+  const total = RARITY_TYPES.reduce((sum, r) => sum + r.weight, 0);
+  let x = Math.random() * total;
+  for (const r of RARITY_TYPES) {
+    x -= r.weight;
+    if (x < 0) return r;
+  }
+  return RARITY_TYPES[0];
+}
+
+// レア度の良い効果を effects 個(違う種類から)選ぶ。強さは、効果の幅の effectMin〜effectMax のあたり
+function rollRarityEffects(rarity, tierRate) {
+  const list = Object.values(EFFECTS).filter(e => e.kind === "bless" && !e.noRoll);
+  const effects = [];
+  for (let i = 0; i < rarity.effects && list.length > 0; i++) {
+    const e = list.splice(randInt(0, list.length - 1), 1)[0];
+    const t = rarity.effectMin + (rarity.effectMax - rarity.effectMin) * Math.random();
+    effects.push({ id: e.id, value: effectRollValue(e, t, tierRate) });
+  }
+  return effects;
+}
+
+// レア度の印(例:エピック を青緑で)。普通・レア度なしは ""
+function rarityTagHTML(item) {
+  const r = rarityOf(item);
+  return r ? `<span class="rarity-tag ${r.cls}">${esc(r.name)}</span> ` : "";
 }
 
 // ==================== 呪われた装備の効果 ====================
@@ -55,18 +112,22 @@ function makeEquipment(data, d, forceCursed = false) {
 //   tierRate:装備の階層の倍率(scale: true の効果だけ、深い階ほど強くなる)
 function rollCurseEffects(tierRate) {
   const pick = kind => {
-    const list = Object.values(EFFECTS).filter(e => e.kind === kind);
+    const list = Object.values(EFFECTS).filter(e => e.kind === kind && !e.noRoll); // noRoll の効果(影の目など)はランダムでは付かない
     return list[randInt(0, list.length - 1)];
   };
-  const value = (e, t) => Math.round((e.min + (e.max - e.min) * t) * (e.scale ? tierRate : 1));
   const t = Math.random(); // 良い効果の強さ(0〜1)
   const spread = BALANCE.cursedRollSpread;
   const t2 = Math.max(0, Math.min(1, t + (Math.random() * 2 - 1) * spread)); // 呪いの重さは t の近く
   const bless = pick("bless"), curse = pick("curse");
   const effects = [];
-  if (bless) effects.push({ id: bless.id, value: value(bless, t) });
-  if (curse) effects.push({ id: curse.id, value: value(curse, t2) });
+  if (bless) effects.push({ id: bless.id, value: effectRollValue(bless, t, tierRate) });
+  if (curse) effects.push({ id: curse.id, value: effectRollValue(curse, t2, tierRate) });
   return effects;
+}
+
+// 効果 e の強さ:幅(min〜max)の t のところ(0 なら min、1 なら max)。scale の効果は深い階ほど強い
+function effectRollValue(e, t, tierRate) {
+  return Math.round((e.min + (e.max - e.min) * t) * (e.scale ? tierRate : 1));
 }
 
 // 効果1つの説明(例:"追撃:攻撃すると、与えたダメージの25%で追撃する")。short なら "追撃25%" のような短い形
@@ -120,7 +181,7 @@ function equipName(eq) {
 // 装備の名前と性能(画面用)。呪われた装備は「呪」の印と、効果を下の行に出す
 //   extra:ステータスのすぐ後ろに付け足す HTML(「(指輪1に装備中)」など)
 function equipHTML(eq, extra = "") {
-  const tag = eq.cursed ? `<span class="curse-tag">呪</span> ` : "";
+  const tag = (eq.cursed ? `<span class="curse-tag">呪</span> ` : "") + rarityTagHTML(eq);
   const block = eq.block ? ` ${span("shield", `防${eq.block}%`)}` : "";
   const fx = eq.effects && eq.effects.length ? `<div class="sub">${effectsHTML(eq.effects, true)}</div>` : "";
   return `${tag}${esc(equipName(eq))} ${statsHTML(eq.stats, eq.rolls)}${block}${extra}${fx}`;
@@ -167,7 +228,10 @@ function statDiffHTML(before, after) {
 function pickUpEquipment(eq, countFound = true) {
   if (countFound) base.records.equipFound[eq.id] = (base.records.equipFound[eq.id] || 0) + 1; // 図鑑に登録
   runPickups.push(eq);
-  addLog(`${eq.cursed ? "呪われた" : ""}${eq.name}[${ITEM_TYPES[eq.slot].name}]を拾った！ ${statsText(eq.stats, eq.rolls)}`);
+  const r = rarityOf(eq);
+  addLog(`${eq.cursed ? "呪われた" : ""}${r ? `【${r.name}】` : ""}${eq.name}[${ITEM_TYPES[eq.slot].name}]を拾った！ ${statsText(eq.stats, eq.rolls)}`);
+  // レア度の良い効果(呪われた装備は、下で呪いと一緒に出す)
+  if (r && !eq.cursed && eq.effects && eq.effects.length) addLog(`　${eq.effects.map(fx => effectText(fx, true)).join(" / ")}`);
   if (eq.cursed) {
     // 呪われた装備は自動では着けない(一度着けると外せないので、自分で決める)
     addLog(`　${(eq.effects || []).map(fx => effectText(fx, true)).join(" / ")}(着けると外せない)`);
@@ -219,7 +283,9 @@ function invTabItems() {
   const tab = INV_TABS[invTab].id;
   if (tab === "equip") return Object.keys(EQUIP_SLOTS);
   // 道具タブ:回復薬と、道具屋で買って持ってきた道具
-  if (tab === "tool") return [...(potions > 0 ? [{ kind: "potion" }] : []), ...runTools.map((t, index) => ({ kind: "tool", index }))];
+  //   謎の塊は見るだけ(キャンプで自動で鑑定される)
+  if (tab === "tool") return [...(potions > 0 ? [{ kind: "potion" }] : []), ...runTools.map((t, index) => ({ kind: "tool", index })),
+                              ...(runLumps > 0 ? [{ kind: "lump" }] : [])];
   return []; // 素材・その他はまだない
 }
 
@@ -312,6 +378,9 @@ function useToolSelected() {
     }
     invCursor = 0;
     useRunTool(tool.index);
+  } else if (tool.kind === "lump") {
+    addLog("謎の塊は、キャンプに入ると鑑定される");
+    render();
   }
 }
 
@@ -329,10 +398,12 @@ function materialStats(eq) {
 // 刻んだときの刻印の名前
 //   敵の固有装備:equipment.js の materialName(その装備だけの名前。例:小鬼の牙)
 //   それ以外:個体差の平均でレア度を決めて「輝く胴の刻印」のような名前(BALANCE.materialRanks)
+//   レア度つき(謎の塊から):レア度の名前が付く(例:エピック胴の刻印 / エピック・小鬼の牙)
 function materialNameFor(eq) {
   const data = equipmentList.find(e => e.id === eq.id);
-  if (data && data.materialName) return data.materialName;
-  return `${materialRankOf(eq).word}${ITEM_TYPES[eq.slot].name}の刻印`;
+  const r = rarityOf(eq);
+  if (data && data.materialName) return r ? `${r.name}・${data.materialName}` : data.materialName;
+  return `${r ? r.name : materialRankOf(eq).word}${ITEM_TYPES[eq.slot].name}の刻印`;
 }
 
 // 装備の個体差の平均(%)から、刻印のレア度(BALANCE.materialRanks の1つ)を決める
@@ -394,18 +465,77 @@ function switchRefineTab(step) {
   refineCursor = 0;
 }
 
+// 刻む画面で Enter:選んだ装備を刻む
+//   刻印がいっぱい(materialMax)なら、代わりに解体する刻印を選ぶ一覧を開く
 function refineSelected() {
   const eq = refineList()[refineCursor];
   if (!eq) return; // このタブに装備がない
+  if (materialsFull()) {
+    refineDiscardFor = eq;
+    refineDiscardCursor = 0;
+    addLog(`刻印がいっぱい(${BALANCE.materialMax}個)。代わりに解体する刻印を選んでください`);
+    render();
+    return;
+  }
+  engraveEquipment(eq);
+  finishRefineOne(eq);
+}
+
+// 刻印を持てる数の上限に届いているか
+function materialsFull() {
+  return base.materials.length >= BALANCE.materialMax;
+}
+
+// 刻印の空きが materialDiveFree より少ないか(少ないとダンジョンに潜れない)
+function materialsNearFull() {
+  return BALANCE.materialMax - base.materials.length < BALANCE.materialDiveFree;
+}
+
+// 刻印がいっぱいのとき、代わりに解体する刻印の候補
+//   先頭の null は「新しく刻むほうを解体する(刻まない)」。そのあとは同じ部位の刻印を、性能の低い順に
+function discardChoices() {
+  const list = base.materials.filter(mat => mat.slot === refineDiscardFor.slot);
+  list.sort((a, b) => materialTotal(a) - materialTotal(b));
+  return [null, ...list];
+}
+
+// 解体する刻印を選んで Enter:それを解体して刻む(先頭を選んだら、刻もうとした装備のほうを素材にする)
+function chooseDiscard() {
+  const eq = refineDiscardFor;
+  const mat = discardChoices()[refineDiscardCursor];
+  refineDiscardFor = null;
+  if (mat) {
+    salvageNow(mat);
+    engraveEquipment(eq);
+  } else {
+    // 刻まずに素材にする(刻印1個を解体したときと同じ数)
+    turn += 1; // ログの色分け(刻んだときと同じ)
+    const resId = ITEM_TYPES[eq.slot].resource;
+    const amount = Math.max(1, Math.floor(BALANCE.salvageBaseValue * BALANCE.salvageRate));
+    base.resources[resId] = (base.resources[resId] || 0) + amount;
+    addLog(`${equipName(eq)}は刻まずに解体した。${RESOURCE_TYPES[resId].name}を${amount}個手に入れた`);
+    saveGame();
+  }
+  finishRefineOne(eq);
+}
+
+// 装備を刻んで、新しい刻印を1個作る
+function engraveEquipment(eq) {
   turn += 1;
   // 新しい刻印を1個作って、ストックに追加する
   // 呪われた装備の効果(良い効果も呪いも)は、そのままの強さで刻印に引き継ぐ
   // name:刻印の名前 / sources:元の装備の id の一覧(equipment.js の id。合成すると2つになる。一族のセット効果に使う)
   const mat = { slot: eq.slot, name: materialNameFor(eq), sources: [eq.id], stats: materialStats(eq), effects: (eq.effects || []).map(fx => ({ ...fx })),
                 plus: 0, fused: false, isNew: true }; // isNew:まだ一覧で見ていない印
+  if (rarityOf(eq)) mat.rarity = eq.rarity; // レア度(名前の色に使う)
   base.materials.push(mat);
+  base.records.engraved += 1; // 実績用
   addLog(`${equipName(eq)}を刻んだ！ 刻印「${mat.name}」(${statsText(mat.stats)})を手に入れた`);
   saveGame();
+}
+
+// 1つ刻み終わったとき(刻まずに解体したときも):まだ刻めれば続けて選び、終わりなら拠点へ
+function finishRefineOne(eq) {
   // 刻んだ装備は一覧から消す。まだ刻めて、刻める装備も残っていれば続けて選ぶ
   runPickups = runPickups.filter(x => x !== eq);
   refineLeft -= 1;
@@ -471,7 +601,8 @@ function materialMarks(mat) {
 //   一族の固有装備から刻んだ刻印は、名前のあとに一族の札(一族の色で、短い名前。例:[ゴブリン][不死])
 function materialStatsHTML(mat) {
   const clans = materialClans(mat).map(c => `${clanBadgeHTML(c)} `).join("");
-  const name = mat.name ? `${span("mat-name", mat.name)} ${clans}` : clans;
+  const r = rarityOf(mat); // レア度つきの刻印は、名前をレア度の色に
+  const name = mat.name ? `${span(r ? `mat-name ${r.cls}` : "mat-name", mat.name)} ${clans}` : clans;
   const fx = mat.effects && mat.effects.length ? ` ${effectsHTML(mat.effects, true)}` : "";
   return `${name}${statsHTML(mat.stats)}${fx}`;
 }
@@ -584,8 +715,15 @@ function salvageValue(mat) {
 // 刻印を解体する(確認してから)。枠にセットしていたら外れる
 function salvageMaterial(mat) {
   const resId = ITEM_TYPES[mat.slot].resource;
+  if (!confirm(`刻印「${mat.name}」を解体して、${RESOURCE_TYPES[resId].name}${salvageValue(mat)}個にしますか？(元に戻せません)`)) return false;
+  salvageNow(mat);
+  return true;
+}
+
+// 刻印を解体する(確認なし。刻印がいっぱいのときに、刻む画面で選んだもの)
+function salvageNow(mat) {
+  const resId = ITEM_TYPES[mat.slot].resource;
   const amount = salvageValue(mat);
-  if (!confirm(`刻印「${mat.name}」を解体して、${RESOURCE_TYPES[resId].name}${amount}個にしますか？(元に戻せません)`)) return false;
   for (const s in base.materialSet) {
     if (base.materialSet[s] === mat) delete base.materialSet[s];
   }
@@ -593,7 +731,6 @@ function salvageMaterial(mat) {
   base.resources[resId] = (base.resources[resId] || 0) + amount;
   addLog(`刻印「${mat.name}」を解体した。${RESOURCE_TYPES[resId].name}を${amount}個手に入れた`);
   saveGame();
-  return true;
 }
 
 // 冒険が終わって拠点に戻るとき:刻まなかった装備を、少しの素材にする(1個につき leftoverSalvageAmount。その部位の素材)
@@ -640,6 +777,9 @@ function fuseMaterials(a, b) {
   const mat = { slot: a.slot, name: `${a.name}と${b.name}`, sources: [...(a.sources || []), ...(b.sources || [])],
                 spent: (a.spent || 0) + (b.spent || 0), stats: fusedStats(a, b), effects: mergeEffects(a.effects, b.effects), plus: 0, fused: true,
                 purified: !!(a.purified || b.purified) };
+  // レア度は、2つのうち上のほう
+  const ra = RARITY_TYPES.findIndex(r => r.id === a.rarity), rb = RARITY_TYPES.findIndex(r => r.id === b.rarity);
+  if (Math.max(ra, rb) > 0) mat.rarity = RARITY_TYPES[Math.max(ra, rb)].id;
   const setSlots = Object.keys(base.materialSet).filter(s => base.materialSet[s] === a || base.materialSet[s] === b);
   for (const s of setSlots) delete base.materialSet[s];
   base.materials = base.materials.filter(x => x !== a && x !== b);

@@ -75,19 +75,36 @@ const BALANCE = {
   breathFalloff: 0.15,      // ブレスのダメージが、口から1マス離れるごとに下がる割合(1マス目100% → 2マス目85% …)
   ballSpeed: 2,             // 属性の球が1ターンに進むマス数
   monsterSightRange: 8,     // この距離(マス数)以内にプレイヤーがいると追いかけてくる
+  blindSightRadius: 2,      // 盲目のとき、プレイヤーが見える範囲(マス数)。その外の敵・物は見えず、一度見た地形だけ薄く残る
   monsterWanderChance: 0.3, // プレイヤーが遠いとき、1ターンにうろつく確率
 
   monsterSpawnChance: 0.8,  // 1部屋に敵がいる確率(スタートと階段の部屋にはいない)
   fieldItemsMin: 1, fieldItemsMax: 2, // 1フロアに落ちている装備の数(回復薬は床には落ちていない)
+  chestChance: 0.35,            // 1フロアに宝箱が1つ出る確率(0.35 なら3階に1つくらい)
+  chestDoubleChance: 0.15,      // 宝箱から装備が2個出る確率
+  mimicChance: 0.15,            // 宝箱を置くとき、ミミック(宝箱に化けた敵)になる確率(出始める階は monsters.js の mimic の minDepth)
+
+  // ダメージ床(罠。種類は js/hazard.js の HAZARD_TYPES)。部屋の中に小さな水たまりの形で置く。敵は平気
+  //   上にいるあいだ、行動するたびにダメージ + 短い状態異常(回避できない。DEF・種類「地形」と属性の軽減は効く)
+  hazardPoolsMin: 0, hazardPoolsMax: 2, // 1フロアのかたまりの数
+  hazardPoolMin: 3,  hazardPoolMax: 6,  // 1つのかたまりのマス数
+  // 種類ごと:出始める階 / ダメージ(1階の値と、1階ごとの上がり幅。敵の攻撃と同じ伸び方)/ 状態異常の毎ターンのダメージ(同じく)/ 状態異常のターン数
+  hazards: {
+    poison: { minDepth: 5,  damage: 8,  damagePerDepth: 0.8, dotDamage: 3, dotDamagePerDepth: 0.3, dotTurns: 2 },
+    magma:  { minDepth: 15, damage: 25, damagePerDepth: 1.5, dotDamage: 6, dotDamagePerDepth: 0.4, dotTurns: 2 },
+  },
+  chestMonsterGearChance: 0.25, // 宝箱の中身が、床の装備ではなく「この階に出る敵の固有装備」になる確率
   potionHeal: 100,          // 回復薬1個で回復する量の最低値
   potionHealRatio: 0.3,     // 回復薬1個で、最大HPのこの割合だけ回復する(potionHeal より少なければ potionHeal)
 
-  // 階段の道(階段を降りるたびに選ぶ。道の種類は dungeon.js の STAIR_ROUTES)。効果は次の1階だけ
+  // 階段の道(階段を降りるたびに選ぶ。道の種類は route.js の STAIR_ROUTES)。効果は次の1階だけ
   routeExtraMin: 1, routeExtraMax: 2, // 「ふつうの道」のほかに出る道の数(この間のランダム)
   // 険しい道:敵のHP・攻撃力の倍率 / 敵がいる確率の倍率 / 素材の倍率 / 固有装備のドロップ率の倍率
   routeRough: { enemyHp: 1.3, enemyAttack: 1.3, spawnRate: 1.25, materialRate: 2, dropRate: 2 },
   // 静かな道:敵がいる確率の倍率 / 床に落ちている装備の数
   routeQuiet: { spawnRate: 0.5, itemsMin: 0, itemsMax: 1 },
+  // 暗闇の道:部屋を作る回数の倍率(部屋が少なくなる)/ 1部屋に出る敵の最大数 / 宝箱が出る確率(1 なら必ず)/ 見える範囲(マス数)
+  routeDark: { roomRate: 0.5, monstersPerRoom: 2, chestChance: 1, sightRadius: 5 },
   routeHoleFloors: 3,     // 深い穴で一気に落ちる階数(途中にエリートの階があれば、そこで止まる)
 
   // 酒場の依頼(依頼の型は js/quests.js の QUEST_TYPES)。報酬はゴールド
@@ -135,6 +152,16 @@ const BALANCE = {
   equipGrowthPerTier: 0.5,  // 一段階ごとに、基礎値が +50% ずつ増える
   equipVariance: 0.2,       // ドロップ時の個体差(±20%)。ステータスごとに別々にかかる
 
+  // 謎の塊(敵がまれに落とす。キャンプに入ると鑑定されて、レア度つきの装備になる。鑑定前に死ぬとなくなる)
+  lumpDropChance: 0.01,     // 倒した敵が謎の塊を落とす確率(エリートは eliteDropMultiplier 倍。運で少し上がる)
+  lumpCursedChance: 0.05,   // 謎の塊を鑑定した装備が呪われている確率(レア度の性能に、呪いの基礎値と良い効果1+呪い1が上乗せ)
+
+  // 宝の地図(敵がまれに落とす。道具の枠を1つ使う。書かれた階に印 X があり、乗ると宝を掘り出せる。死ぬとなくなる)
+  mapDropChance: 0.005,     // 倒した敵が宝の地図を落とす確率(エリートは eliteDropMultiplier 倍。運で少し上がる)
+  mapDepthMin: 3, mapDepthMax: 10, // 地図に書かれる階:拾った階の何階先か(この間のランダム。goalDepth より深くはならない)
+  mapRewardItems: 3,        // 掘り出したときの装備の数(宝箱と同じ選び方)
+  mapLumpChance: 0.5,       // 掘り出したとき、謎の塊も1つ出る確率
+
   // 呪われた装備(効果の種類は effects.js に書く)
   cursedChance: 0.05,       // 拾う装備が呪われている確率(床の装備・敵が落とす装備どちらも)
   cursedStatBonus: 0.5,     // 呪われた装備の基礎値の上乗せ(0.5 なら +50%)
@@ -153,6 +180,9 @@ const BALANCE = {
     { rank: "並", word: "かすれた", minRoll: -Infinity },
   ],
   refineBase: 1,          // 死んだときに刻める数(エリートを倒すと1体につき+1)
+  // 刻印を持てる数の上限(セーブが大きくなりすぎないように)
+  materialMax: 1000,
+  materialDiveFree: 10,   // 空きがこの数より少ないと、ダンジョンに潜れない(解体・合成で減らす)
 
   // 刻印の強化(拠点の「制作」。素材を使う)
   enhanceMax: 15,           // 強化できる上限(+15)
@@ -193,6 +223,21 @@ const BALANCE = {
   giveUpHoldMs: 1500,     // X キーを何ミリ秒押し続けると自害するか
   touchRepeatDelayMs: 300, // スマホの十字キー:押しっぱなしにしてから、続けて動き始めるまでのミリ秒(そのあとは moveRepeatMs ごと)
 };
+
+// ==================== レア度(謎の塊を鑑定して出る装備) ====================
+// 謎の塊を鑑定した装備にだけ付く(床・宝箱・敵の装備には付かない)
+//   鑑定した装備が呪われていたら(lumpCursedChance)、この性能にさらに cursedStatBonus と、良い効果1つ+呪い1つが乗る
+// 上から順に並べる。id:区別する名前 / name:表示名 / cls:色(CSS のクラス名)
+//   weight:出る確率(%。全部で100)/ statRate:基礎値の倍率 / rollMin〜rollMax:個体差の範囲(-0.2 なら -20%)
+//   effects:付く良い効果の数(effects.js の良い効果から、呪いなし)/ effectMin〜effectMax:効果の強さ(幅のどのあたりか。0 なら下限、1 なら上限)
+//   普通は今までの装備と同じ(印は付かない)
+const RARITY_TYPES = [
+  { id: "common",    name: "普通",       cls: "r-common", weight: 72,  statRate: 1.0, rollMin: -0.2, rollMax: 0.2, effects: 0, effectMin: 0,   effectMax: 0 },
+  { id: "rare",      name: "レア",       cls: "r-rare",   weight: 22,  statRate: 1.15, rollMin: 0,    rollMax: 0.2, effects: 0, effectMin: 0,   effectMax: 0 },
+  { id: "epic",      name: "エピック",   cls: "r-epic",   weight: 5,   statRate: 1.4, rollMin: 0,    rollMax: 0.2, effects: 0, effectMin: 0,   effectMax: 0 },
+  { id: "legendary", name: "レジェンド", cls: "r-legend", weight: 0.9, statRate: 1.7, rollMin: 0.05, rollMax: 0.25, effects: 1, effectMin: 0.6, effectMax: 1 },
+  { id: "mythic",    name: "ミシック",   cls: "r-mythic", weight: 0.1, statRate: 2.2, rollMin: 0.1,  rollMax: 0.3, effects: 2, effectMin: 1,   effectMax: 1 },
+];
 
 // ==================== スロット・ステータス定義 ====================
 // 装備の種類(equipment.js の slot に書くもの)

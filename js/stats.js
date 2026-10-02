@@ -56,9 +56,15 @@ function clanById(id) {
   return clanList.find(c => c.id === id) || null;
 }
 
-// 敵の一族(なければ null)
+// 敵の一族の一覧(monsters.js の clan は、1つなら "undead"、2つなら ["undead", "dragons"] のように書く)
+function monsterClans(monsterData) {
+  if (!monsterData || !monsterData.clan) return [];
+  return [].concat(monsterData.clan).map(clanById).filter(c => c);
+}
+
+// 敵の一族(なければ null)。2つあるときは最初の一族(マップの色・号令に使う)
 function monsterClan(monsterData) {
-  return (monsterData && monsterData.clan && clanById(monsterData.clan)) || null;
+  return monsterClans(monsterData)[0] || null;
 }
 
 // 敵のマップ上の色:一族があれば一族の色(sets.js の colors。書いていなければ一族の color)。なければ monsters.js の color
@@ -69,9 +75,10 @@ function monsterColor(monsterData) {
   return (clan.colors && clan.colors[monsterData.id]) || clan.color || monsterData.color;
 }
 
-// 装備の一族(敵の固有装備なら、その敵の一族。床の装備などは null)
-function equipmentClan(equipData) {
-  return equipData ? monsterClan(monsterList.find(m => m.id === equipData.from)) : null;
+// 装備の一族の一覧(敵の固有装備なら、その敵の一族。床の装備などは空)
+//   一族が2つある敵(ドラゴンゾンビ)の装備は、両方の一族に数える
+function equipmentClans(equipData) {
+  return equipData ? monsterClans(monsterList.find(m => m.id === equipData.from)) : [];
 }
 
 // 刻印の一族の一覧(元の装備から決める)
@@ -79,8 +86,9 @@ function equipmentClan(equipData) {
 function materialClans(mat) {
   const clans = [];
   for (const id of mat.sources || []) {
-    const clan = equipmentClan(equipmentList.find(e => e.id === id));
-    if (clan && !clans.includes(clan)) clans.push(clan);
+    for (const clan of equipmentClans(equipmentList.find(e => e.id === id))) {
+      if (!clans.includes(clan)) clans.push(clan);
+    }
   }
   return clans;
 }

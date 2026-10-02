@@ -33,7 +33,7 @@ const QUEST_TYPES = {
     name: "一族討伐", weight: 2,
     make(d, big) {
       // その階のあたりに出る敵がいる一族から選ぶ
-      const clans = clanList.filter(c => monsterList.some(m => m.clan === c.id && d >= m.minDepth && (m.maxDepth === null || d <= m.maxDepth)));
+      const clans = clanList.filter(c => monsterList.some(m => monsterClans(m).includes(c) && d >= m.minDepth && (m.maxDepth === null || d <= m.maxDepth)));
       if (clans.length === 0) return null;
       const clan = clans[randInt(0, clans.length - 1)];
       const count = Math.round(randInt(5, 10) * (big ? BALANCE.questBigCount : 1));
@@ -42,7 +42,7 @@ const QUEST_TYPES = {
     text: q => `${(clanById(q.clanId) || { name: "？？？" }).name}の敵を${q.count}体倒す`,
     progressText: q => `${q.progress} / ${q.count}`,
     onKill(q, m) {
-      if (m.data.clan === q.clanId) q.progress += 1;
+      if (monsterClans(m.data).some(c => c.id === q.clanId)) q.progress += 1; // 一族が2つある敵は、どちらの依頼にも数える
       return q.progress >= q.count;
     },
   },

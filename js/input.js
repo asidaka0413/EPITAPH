@@ -70,8 +70,8 @@ document.addEventListener("keydown", (e) => {
 function pressKey(key, repeat) {
   // 押しっぱなしの Enter / Space は無視する(分かれ道 → キャンプ、リザルト → 刻む が勝手に決まらないように)
   if (repeat && key === "Enter") return;
-  // 分かれ道・キャンプでは、押しっぱなしの矢印も無視する(移動キーを押したまま階段に乗ったとき、選んでいる道が動かないように)
-  if (repeat && (screenMode === "route" || screenMode === "camp") && key.startsWith("Arrow")) return;
+  // 分かれ道・キャンプ・宝の地図の入れ替えでは、押しっぱなしの矢印も無視する(移動キーを押したまま階段に乗ったとき、選んでいる道が動かないように)
+  if (repeat && ["route", "camp", "swap"].includes(screenMode) && key.startsWith("Arrow")) return;
   // X を押し始めたら自害のカウント開始(押しっぱなしの繰り返しは無視)
   if (key === "x" || key === "X") {
     if (!repeat) startGiveUp();
@@ -91,10 +91,15 @@ function pressKey(key, repeat) {
   if (repeat && screenMode === "dungeon" && (key.startsWith("Arrow") || isWaitKey(key))) {
     const now = performance.now();
     if (now - lastRepeatMoveAt < BALANCE.moveRepeatMs) return;
-    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => monsterAt(px + dx, py + dy))) return;
+    // (宝箱に化けたミミックでは止まらない。止まると正体がばれてしまうため)
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const m = monsterAt(px + dx, py + dy); return m && !m.disguised; })) return;
+    // 進む先が毒沼・マグマなら止まる(踏むときは押し直す)。もう上にいるときは止まらない(抜け出せるように)
+    const step = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[key];
+    if (step && hazardAt(px + step[0], py + step[1]) && !hazardAt(px, py)) return;
     lastRepeatMoveAt = now;
   }
   handleKey({ key });
+  checkAchievements(); // 実績の条件を満たしたか
 }
 
 // ターンスキップのキーか(Z か .)
@@ -111,6 +116,17 @@ function handleKey(e) {
 
   if (screenMode === "result") {
     if (e.key === "Enter") leaveResult();
+    return;
+  }
+
+  if (screenMode === "refine" && refineDiscardFor) {
+    // 刻印がいっぱいで、代わりに解体する刻印を選んでいる最中(Esc で刻む装備を選び直す)
+    const count = discardChoices().length;
+    if (e.key === "ArrowUp") refineDiscardCursor = Math.max(0, refineDiscardCursor - 1);
+    else if (e.key === "ArrowDown") refineDiscardCursor = Math.min(count - 1, refineDiscardCursor + 1);
+    else if (e.key === "Enter") { chooseDiscard(); return; }
+    else if (e.key === "Escape") refineDiscardFor = null;
+    render();
     return;
   }
 
@@ -168,6 +184,16 @@ function handleKey(e) {
     } else if (e.key === "i" || e.key === "I" || e.key === "Escape") {
       closeInventory();
     }
+    return;
+  }
+
+  // 宝の地図の入れ替え(道具の枠 + いちばん下に「拾わない」)
+  if (screenMode === "swap") {
+    if (e.key === "ArrowUp") swapCursor = Math.max(0, swapCursor - 1);
+    else if (e.key === "ArrowDown") swapCursor = Math.min(runTools.length, swapCursor + 1);
+    else if (e.key === "Enter") { chooseSwap(); return; }
+    else if (e.key === "Escape") { swapCursor = runTools.length; chooseSwap(); return; }
+    render();
     return;
   }
 
@@ -233,9 +259,10 @@ function handleKey(e) {
 
 // ==================== 起動 ====================
 if (typeof EQUIPMENT_DATA === "undefined" || typeof MONSTER_DATA === "undefined" || typeof BOOK_DATA === "undefined"
-    || typeof BLESSING_DATA === "undefined" || typeof CURSE_DATA === "undefined" || typeof CLAN_DATA === "undefined" || typeof HELP_PAGES === "undefined" || typeof ELEMENT_DATA === "undefined") {
+    || typeof BLESSING_DATA === "undefined" || typeof CURSE_DATA === "undefined" || typeof CLAN_DATA === "undefined" || typeof HELP_PAGES === "undefined" || typeof ELEMENT_DATA === "undefined"
+    || typeof ACHIEVEMENT_DATA === "undefined") {
   document.getElementById("screen").textContent =
-    "equipment.js・monsters.js・books.js・effects.js・sets.js・elements.js・help.js のどれかが読み込めませんでした。index.html と同じ場所の data フォルダにあるか確認してください。";
+    "equipment.js・monsters.js・books.js・effects.js・sets.js・elements.js・help.js・achievements.js のどれかが読み込めませんでした。index.html と同じ場所の data フォルダにあるか確認してください。";
 } else {
   // メイン画面の大きさを、マップの大きさ(文字数 × 行数)に固定する
   //   ch は文字1個分の幅、em は文字の高さ。1.15 はマップの行の高さ(CSS の line-height)
@@ -251,5 +278,6 @@ if (typeof EQUIPMENT_DATA === "undefined" || typeof MONSTER_DATA === "undefined"
   warnings.forEach(addLog);
   // 拠点から始める(読み込んだ刻印を、潜る前にセットできるように)
   goToTown();
+  checkAchievements(); // これまでの記録で、もう取れている実績
   render();
 }

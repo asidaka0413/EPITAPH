@@ -22,6 +22,7 @@
 //                例:effects: [{ id: "poisonHit", value: 6 }]  … 攻撃すると敵を毒にする
 //   desc     :(省略できる)図鑑の紹介文。詳細のいちばん下に出る。\n で改行できる
 //                例:desc: "なめした革の兜。軽くて丈夫。"
+//   hidden   :(省略できる)true なら隠し装備。一度拾うまで、図鑑に「？？？」の行すら出さない
 //   materialName:(固有装備だけ)刻んで刻印になったときの名前(例:"小鬼の牙")
 //                書いていない装備は、個体差のレア度で「輝く胴の刻印」のような名前になる(js/config.js の materialRanks)
 
@@ -94,6 +95,9 @@ const EQUIPMENT_DATA = [
 
   // ---------- コウモリの固有装備 ----------
   { id: "bat_wing",        name: "蝙蝠の羽飾り", materialName: "夜を裂く羽音",   slot: "earring", stats: { agl: 60, luk: 20 },  from: "bat",    weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- 影蝙蝠の固有装備(隠し装備。見つけるまで図鑑に出ない) ----------
+  { id: "shadow_robe",     name: "影の衣", materialName: "影をまとう衣", slot: "body", stats: { def: 50, agl: 80 }, from: "shadowbat", weight: 10, minDepth: 1, maxDepth: null, hidden: true, effects: [{ id: "blindImmune", value: 1 }] },
 
   // ---------- ゴブリンの呼び子の固有装備 ----------
   { id: "captain_helm",    name: "隊長の兜", materialName: "小鬼の号令",       slot: "head",    stats: { hp: 60, def: 30, atk: 10 }, from: "caller", weight: 10, minDepth: 1, maxDepth: null },
@@ -186,4 +190,93 @@ const EQUIPMENT_DATA = [
 
   // ---------- ゴーレムの固有装備 ----------
   { id: "golem_core",      name: "ゴーレムの核", materialName: "動かぬ心",   slot: "ring",    stats: { hp: 120, def: 60 },  from: "golem",  weight: 10, minDepth: 1, maxDepth: null },
+
+  // ==================== 中層(51階〜)の敵の固有装備 ====================
+  // ---------- ホブゴブリンの固有装備 ----------
+  { id: "hob_cleaver",     name: "大鬼の鉈",     materialName: "荒ぶる大鬼",   slot: "weapon",  stats: { atk: 80, hp: 60 },   from: "hobgoblin", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "hob_belt",        name: "大鬼の革帯",   materialName: "群れの腕っぷし", slot: "waist", stats: { hp: 150, atk: 20 },  from: "hobgoblin", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- ミノタウロスの固有装備 ----------
+  { id: "bull_axe",        name: "牛頭の大斧",   materialName: "迷宮の剛腕",   slot: "weapon",  stats: { atk: 100 },          from: "minotaur", weight: 10, minDepth: 1, maxDepth: null, effects: [{ id: "dmgUp", value: 10 }] },
+  { id: "horned_helm",     name: "迷宮の角兜",   materialName: "猛る双角",     slot: "head",    stats: { hp: 120, def: 60, atk: 20 }, from: "minotaur", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- 暗殺者の固有装備 ----------
+  { id: "assassin_blade",  name: "暗殺者の短刀", materialName: "音なき一刺し", slot: "weapon",  stats: { atk: 60, crt: 80 },  from: "assassin", weight: 10, minDepth: 1, maxDepth: null, effects: [{ id: "critDmg", value: 20 }] },
+  { id: "silent_boots",    name: "忍び足の靴",   materialName: "消える足音",   slot: "feet",    stats: { agl: 100, def: 30 }, from: "assassin", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- マンティコアの固有装備 ----------
+  { id: "stinger_whip",    name: "毒針の尾鞭",   materialName: "しなる毒尾",   slot: "weapon",  stats: { atk: 70, crt: 40 },  from: "manticore", weight: 10, minDepth: 1, maxDepth: null, effects: [{ id: "poisonHit", value: 14 }] },
+  { id: "lion_mane",       name: "獅子のたてがみ", materialName: "獣王の威",   slot: "earring", stats: { atk: 25, agl: 60 },  from: "manticore", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- バンシーの固有装備 ----------
+  { id: "wailing_earring", name: "嘆きの耳飾り", materialName: "響く嘆き",     slot: "earring", stats: { luk: 60, crt: 60 },  from: "banshee", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "mourning_veil",   name: "泣き女のヴェール", materialName: "涙の帳",   slot: "head",    stats: { hp: 80, agl: 80 },   from: "banshee", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- 大爆ぜ虫の固有装備 ----------
+  { id: "blast_shield",    name: "爆ぜ殻の盾",   materialName: "砕けぬ大殻",   slot: "shield",  stats: { hp: 120, def: 80 },  block: 55, from: "bigbomber", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "powder_pouch",    name: "火薬袋",       materialName: "弾ける火種",   slot: "waist",   stats: { hp: 100, atk: 40 },  from: "bigbomber", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- ヘルハウンドの固有装備 ----------
+  { id: "hound_collar",    name: "獄犬の首輪",   materialName: "地獄の番",     slot: "earring", stats: { atk: 30, crt: 50 },  from: "hellhound", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "blackfire_pelt",  name: "黒炎の毛皮",   materialName: "燃えさかる毛並み", slot: "body", stats: { hp: 160, def: 40, agl: 70 }, from: "hellhound", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- リッチの固有装備 ----------
+  { id: "lich_scepter",    name: "不死者の王笏", materialName: "死を統べる者", slot: "weapon",  stats: { atk: 90, luk: 60 },  from: "lich", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "soul_vessel",     name: "魂の器",       materialName: "囚われた魂",   slot: "ring",    stats: { hp: 100, crt: 60 },  from: "lich", weight: 10, minDepth: 1, maxDepth: null, effects: [{ id: "lifeSteal", value: 3 }] },
+
+  // ---------- ゴブリンの王の固有装備 ----------
+  { id: "king_sword",      name: "小鬼王の大剣", materialName: "王の一太刀",   slot: "weapon",  stats: { atk: 95, hp: 80 },   from: "goblinking", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "king_crown",      name: "小鬼王の冠",   materialName: "小鬼の王権",   slot: "head",    stats: { hp: 140, atk: 30, luk: 40 }, from: "goblinking", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- 鉄巨人の固有装備 ----------
+  { id: "giant_gauntlet",  name: "鉄巨人の拳甲", materialName: "砕く鉄拳",     slot: "weapon",  stats: { atk: 90, def: 50 },  from: "irongiant", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "giant_cuirass",   name: "鉄巨人の胸甲", materialName: "動じぬ鉄塊",   slot: "body",    stats: { hp: 250, def: 250 }, from: "irongiant", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- ゴブリンの祈祷師の固有装備 ----------
+  { id: "shaman_staff",    name: "祈祷師の杖",   materialName: "小鬼の祈り",   slot: "weapon",  stats: { atk: 85, luk: 70 },  from: "goblinshaman", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "charm_earring",   name: "呪い札の首飾り", materialName: "まとわる呪言", slot: "earring", stats: { luk: 50, crt: 70 }, from: "goblinshaman", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- 盗賊頭の固有装備 ----------
+  { id: "bandit_saber",    name: "盗賊頭の曲刀", materialName: "掠め取る刃",   slot: "weapon",  stats: { atk: 85, agl: 50, luk: 50 }, from: "banditboss", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "bandit_eyepatch", name: "かしらの眼帯", materialName: "目ざとい片目", slot: "head",    stats: { hp: 100, luk: 100 }, from: "banditboss", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- ゴブリンの狙撃兵の固有装備 ----------
+  { id: "sniper_longbow",  name: "狙撃兵の長弓", materialName: "千里を射抜く矢", slot: "weapon", stats: { atk: 90, crt: 70 }, from: "goblinsniper", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "hawkeye_hood",    name: "鷹目の頭巾",   materialName: "遠くを見る眼", slot: "head",    stats: { hp: 120, agl: 60, crt: 50 }, from: "goblinsniper", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- デュラハンの固有装備 ----------
+  { id: "headless_scythe", name: "首なし騎士の大鎌", materialName: "刈り取る影", slot: "weapon", stats: { atk: 110, crt: 40 }, from: "dullahan", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "headless_armor",  name: "首なし騎士の鎧", materialName: "主なき甲冑", slot: "body",    stats: { hp: 220, def: 220, agl: 20 }, from: "dullahan", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- ガーゴイルの固有装備 ----------
+  { id: "stone_greatsword", name: "石像の大剣",  materialName: "薙ぎ払う石腕", slot: "weapon",  stats: { atk: 105, def: 40 }, from: "gargoyle", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "stone_wing_shield", name: "石翼の盾",   materialName: "閉じた石の翼", slot: "shield",  stats: { hp: 120, def: 140 }, block: 40, from: "gargoyle", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- 竜人の固有装備 ----------
+  { id: "dragonkin_lance", name: "竜人の突撃槍", materialName: "貫く竜の角", slot: "weapon",  stats: { atk: 110, agl: 30 }, from: "dragonkin", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "dragonscale_plate", name: "竜鱗の胸当て", materialName: "熱を帯びた鱗", slot: "body", stats: { hp: 180, def: 150 }, from: "dragonkin", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- キマイラの固有装備 ----------
+  { id: "triple_fang",     name: "三つ首の牙",   materialName: "三つの咆哮",   slot: "weapon",  stats: { atk: 100, agl: 40 }, from: "chimera", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "chimera_belt",    name: "合成獣の皮帯", materialName: "継がれた皮",   slot: "waist",   stats: { hp: 180, def: 60 },  from: "chimera", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- 狂戦士の固有装備 ----------
+  { id: "berserk_axes",    name: "狂戦士の双斧", materialName: "止まぬ猛り",   slot: "weapon",  stats: { atk: 110 },          from: "berserker", weight: 10, minDepth: 1, maxDepth: null, effects: [{ id: "dmgUp", value: 15 }] },
+  { id: "blood_bangle",    name: "血染めの腕輪", materialName: "乾かぬ返り血", slot: "ring",    stats: { atk: 45, crt: 50 },  from: "berserker", weight: 10, minDepth: 1, maxDepth: null, effects: [{ id: "lifeSteal", value: 3 }] },
+
+  // ---------- ヒュドラの固有装備 ----------
+  { id: "hydra_mail",      name: "多頭蛇の鱗鎧", materialName: "絡みあう鱗",   slot: "body",    stats: { hp: 200, def: 120, agl: 50 }, from: "hydra", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "regrow_fang",     name: "再生の牙",     materialName: "生え替わる首", slot: "ring",    stats: { hp: 200 },           from: "hydra", weight: 10, minDepth: 1, maxDepth: null, effects: [{ id: "killHeal", value: 15 }] },
+
+  // ---------- グールの固有装備 ----------
+  { id: "ghoul_claw",      name: "屍食いの鉤爪", materialName: "腐れた爪",     slot: "weapon",  stats: { atk: 110, agl: 40 }, from: "ghoul", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "carrion_necklace", name: "腐肉の首飾り", materialName: "飢えた屍の牙", slot: "earring", stats: { hp: 150, luk: 60 }, from: "ghoul", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- ベヒーモスの固有装備 ----------
+  { id: "behemoth_horn",   name: "巨獣の角",     materialName: "大地を穿つ角", slot: "weapon",  stats: { atk: 130 },          from: "behemoth", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "behemoth_hooves", name: "巨獣の蹄靴",   materialName: "揺るがす蹄",   slot: "feet",    stats: { hp: 150, def: 100, agl: 40 }, from: "behemoth", weight: 10, minDepth: 1, maxDepth: null },
+
+  // ---------- ドラゴンゾンビの固有装備(不死と竜の両方の一族) ----------
+  { id: "rotdragon_fang",  name: "腐竜の牙",     materialName: "朽ちぬ竜牙",   slot: "weapon",  stats: { atk: 135, crt: 40 }, from: "dragonzombie", weight: 10, minDepth: 1, maxDepth: null },
+  { id: "rotdragon_bonemail", name: "腐竜の骨鎧", materialName: "死してなお竜", slot: "body",   stats: { hp: 250, def: 200 }, from: "dragonzombie", weight: 10, minDepth: 1, maxDepth: null },
 ];

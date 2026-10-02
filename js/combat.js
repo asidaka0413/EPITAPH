@@ -29,6 +29,7 @@ function killMonster(target, text) {
     potions += target.stolen;
     addLog(`盗まれた回復薬を${target.stolen}個取り返した`);
   }
+  if (target.stolenTool) returnStolenTool(target); // 盗賊頭に盗まれた道具
   // 「糧」:敵を倒すと回復
   const killHeal = effectValue("killHeal");
   if (killHeal && playerHP < maxHP) {
@@ -43,8 +44,12 @@ function killMonster(target, text) {
     dropHolyWater();
   }
   gainMonsterResource(target);
+  if (target.data.ability && target.data.ability.type === "mimic") dropMimicTreasure(target); // ミミック:宝箱の中身
   dropMonsterEquipment(target);
   dropMonsterBook(target);
+  dropLump(target); // 謎の塊(まれに)
+  dropTreasureMap(target); // 宝の地図(まれに)
+  if (target.data.ability && target.data.ability.deathBlast) startDeathBlast(target, target.data.ability.deathBlast); // ドラゴンゾンビ:死骸が爆発する
   checkLevelUp();
   saveGame(); // 経験値・レベルは拠点のデータなので、倒すたびにセーブ
 }
@@ -71,12 +76,16 @@ function handlePlayerDeath(cleared = false) {
   rec.totalKills += totalKills;
   for (const id in runStats.kills) rec.kills[id] = (rec.kills[id] || 0) + runStats.kills[id];
   rec.bestHit = Math.max(rec.bestHit, runStats.bestHit);
+  rec.damageDealt += runStats.damageDealt;
+  rec.damageTaken += runStats.damageTaken;
+  rec.crits += runStats.crits;
   if (cleared) rec.clears = (rec.clears || 0) + 1;
   else buildGrave(totalKills); // 死んだ階に墓が建つ
   endRunQuests(); // 受けていた依頼は消える(掲示板は拠点に戻ったとき新しくなる)
 
   addLog(cleared ? `地下${depth}階を踏破した！` : `あなたは死んだ… (地下${depth}階)`);
   screenMode = "result";
+  checkAchievements(); // 冒険の終わりで取れる実績(自害はキーを押していないときに終わるので、ここでも調べる)
   saveGame();
   render();
 }
@@ -106,7 +115,10 @@ function playerStrike(target, prefix = "") {
   // 「剛力」で与ダメージアップ。衰弱していると下がる。砥石・狂熱の香薬で上がる
   let dmg = rollDamage(s.atk * (1 + (fx.dmgUp || 0) / 100) * weakMultiplier() * buffAtkMultiplier());
   const isCrit = rollCrit(s);
-  if (isCrit) dmg = Math.round(dmg * critMultiplier());
+  if (isCrit) {
+    dmg = Math.round(dmg * critMultiplier());
+    runStats.crits += 1;
+  }
   const targetAb = target.data.ability || {};
   // 甲冑騎士:普通の攻撃は鎧で減る(会心は貫通)
   let critText = isCrit ? "会心の一撃！ " : "";
@@ -157,7 +169,11 @@ function tryMove(dx, dy) {
   runStats.turns += 1;
 
   const target = monsterAt(nx, ny);
-  if (target) {
+  if (target && target.disguised) {
+    // 宝箱に化けたミミック:開けようとすると正体を現して噛みつく(こちらは攻撃しない)
+    revealMimic(target, true);
+    if (playerHP <= 0) { handlePlayerDeath(); return; }
+  } else if (target) {
     meetMonster(target.data.id); // 戦った敵は図鑑に登録
     // 不意打ち:気づいていない敵(眠っている墓守も)を殴ると、2回攻撃できる
     const sneak = !target.hunting;
@@ -202,11 +218,20 @@ function tryMove(dx, dy) {
 }
 
 // 今いるマスの足元を調べる(歩いて乗ったとき・転移の札で飛んだとき)
-//   足元のアイテムを全部拾い、墓の上なら墓碑銘を読んで、遺品があれば拾う
+//   宝箱なら開けて、足元のアイテムを全部拾い、墓の上なら墓碑銘を読んで、遺品があれば拾う
 function checkFooting() {
+  const chest = chestAt(px, py);
+  if (chest) openChest(chest);
+  const spot = treasureSpotAt(px, py);
+  // 宝の地図の印(地図を盗賊頭に盗まれていると掘れない)
+  if (spot && runTools.includes(spot.map)) digTreasure(spot);
+  else if (spot) addLog("宝の印だ。…でも地図を盗まれていて、どこを掘ればいいか分からない");
   for (const it of items.filter(i => i.x === px && i.y === py)) {
+    // 宝の地図は、道具の枠がいっぱいなら床に残して入れ替える画面を出すので、拾う処理の中で床から消す
+    if (it.treasureMap) { pickUpTreasureMap(it); continue; }
     items = items.filter(i => i !== it);
     if (it.book) obtainBook(it.book);
+    else if (it.lump) gainLump();
     else pickUpEquipment(it.equip);
   }
   if (graveAt(px, py)) visitGrave();
@@ -256,8 +281,8 @@ function usePotion() {
     addLog("回復薬を持っていない");
     return;
   }
-  // HPが満タンでも、毒・やけどなら使える(治すため)
-  if (playerHP >= maxHP && Object.keys(playerDots).length === 0) {
+  // HPが満タンでも、毒・やけど・盲目なら使える(治すため)
+  if (playerHP >= maxHP && Object.keys(playerDots).length === 0 && !playerBlind) {
     addLog("HPはすでに満タン");
     return;
   }
@@ -268,7 +293,9 @@ function usePotion() {
   playerHP += heal;
   addLog(`回復薬を使った！ HPが${heal}回復`);
   questEvent("onPotion"); // 「回復薬を使わずに」の依頼は失敗
-  // 回復薬は毒・やけども治す(継続ダメージに、何もできずに削られ続けないように)
-  if (cureDots()) addLog("毒・やけどが消えた");
+  // 回復薬は毒・やけど・盲目も治す(継続ダメージに、何もできずに削られ続けないように)
+  const hadBlind = !!playerBlind;
+  playerBlind = null;
+  if (cureDots() || hadBlind) addLog("毒・やけど・盲目が治った");
   endPlayerTurn();
 }

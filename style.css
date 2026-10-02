@@ -97,6 +97,7 @@ kbd {
 .debug-panel { border-color: #6b4a2e; }
 #debug { display: flex; flex-wrap: wrap; gap: 6px; }
 #debug .toggle { border-radius: 4px; }
+.debug-select { font-family: inherit; font-size: 13px; background: #1d1d26; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 2px 4px; }
 
 /* 持ち物画面のタブ */
 /* タブが多くて入りきらないときは、横にスクロールする(選んでいるタブが見えるよう、画面を描くたびに自動でスクロール) */
@@ -140,14 +141,23 @@ kbd {
 .elite { font-weight: bold; text-decoration: underline; }
 .primed { color: #fff; background: #c02020; font-weight: bold; } /* 膨らんだ爆ぜ虫 */
 .grave { color: #d8d0b8; font-weight: bold; }                    /* 前の自分の墓 */
+.chest { color: #e0a84a; font-weight: bold; }                     /* 宝箱 */
+.map-item { color: #e8d8a8; font-weight: bold; }                  /* 宝の地図(床に落ちているもの) */
+.treasure { color: #ffd84d; font-weight: bold; }                  /* 宝の地図の印(X) */
 .dormant { opacity: 0.55; }                                       /* 眠っている墓守 */
 .flame { color: #ff8030; font-weight: bold; }                     /* 鬼火の炎 */
+/* ダメージ床(地面ごと色を付ける)。F キーの表示・ブレスの範囲の色が上に重なるよう、それらより前に書く */
+.haz-poison { color: #b070e0; background: #24142c; }               /* 毒沼 */
+.haz-magma  { color: #ff7a30; background: #3a1608; font-weight: bold; } /* マグマ */
 .ball { font-weight: bold; }                                      /* ドラゴンの属性の球(色は属性ごとに style で指定) */
 .danger { background: #6a1414; }                                  /* ブレスが当たる範囲(溜めているあいだ赤く光る) */
 .atk { background: #3e1a1a; }                                     /* F キー:敵の攻撃が届く範囲(薄い赤) */
 .vis { background: #2e2a14; }                                     /* F キー:気づいていない敵の視界(薄い黄色) */
 .poison { color: #b060d0; font-weight: bold; }                    /* 毒 */
 .burn { color: #ff7a40; font-weight: bold; }                      /* やけど */
+.blind { color: #9aa0c8; font-weight: bold; }                     /* 盲目 */
+.mem { opacity: 0.4; }                                            /* 盲目などで今は見えない、前に見た地形(薄く残す) */
+.floor.mem { opacity: 0.6; }                                      /* 床はもともと暗いので、消えすぎないように */
 .route { color: #e0c070; }                                        /* この階に来るときに選んだ道 */
 .potion { color: #ff77cc; }
 .armor { color: #55ccff; }
@@ -159,6 +169,14 @@ kbd {
 /* 刻印の名前・一族の名前は、言葉の途中で改行しない(長いときは、言葉の切れ目で次の行に送る) */
 .mat-name { color: #5fd7d7; font-weight: bold; white-space: nowrap; } /* 刻印の名前 */
 .clan-tag { color: #e8c890; white-space: nowrap; }                    /* 一族の名前(色は一族ごとに style で指定) */
+/* レア度(謎の塊を鑑定した装備)。刻印の名前の色(.mat-name)より後ろに書いて、こちらを優先する */
+.r-common { color: #e8e8e8; }
+.r-rare   { color: #5ab0ff; }
+.r-epic   { color: #2ec4a0; }
+.r-legend { color: #ffa040; }
+.r-mythic { color: #ff4d6d; }
+.rarity-tag { font-size: 12px; font-weight: bold; white-space: nowrap; } /* 装備名の前の「エピック」などの印(色は上の r-〇〇) */
+.lump { color: #c8b8a0; font-weight: bold; }                           /* 謎の塊 */
 /* 一族の札(刻印の名前の横)。背景の色は一族ごとに style で指定 */
 .clan-badge { color: #111; border-radius: 3px; padding: 0 4px; font-size: 12px; white-space: nowrap; }
 .book { color: #ffae42; font-weight: bold; }

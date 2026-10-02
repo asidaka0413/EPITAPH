@@ -90,7 +90,9 @@ function tipBox(title, lines) {
 // マス (x, y) の詳細(何もなければ "")。重なっているときは、マップに見えているものを優先する
 function tooltipHTML(x, y) {
   if (x === px && y === py) return "";
+  if (!canSeeTile(x, y)) return ""; // 盲目などで見えないマスは調べられない
   const m = monsterAt(x, y);
+  if (m && m.disguised) return chestTipHTML(m.fakeName); // 宝箱に化けたミミック:名前だけが少しおかしい
   if (m) return monsterTipHTML(m);
   const ball = ballAt(x, y);
   if (ball) {
@@ -101,7 +103,8 @@ function tooltipHTML(x, y) {
     ]);
   }
   if (dangerTiles().has(`${x},${y}`)) {
-    return tipBox(span("down", "ブレスの範囲！"), [span("tip-sub", "次の行動で、ここにブレスが来る。範囲の外へ動いてよけよう(口から遠いほど弱い)")]);
+    // ブレス・ガーゴイルの大技・竜人の突進・ドラゴンゾンビの死骸の爆発
+    return tipBox(span("down", "危ない！ 攻撃の範囲"), [span("tip-sub", "次に、ここへブレスや大技などが来る。かわせないので、範囲の外へ動いてよけよう")]);
   }
   const f = flameAt(x, y);
   if (f) {
@@ -122,10 +125,34 @@ function tooltipHTML(x, y) {
     const relic = g.relic && !g.relicTaken ? `遺品:${esc(equipName(g.relic))}` : span("dim", "遺品はもう持ち帰った");
     return tipBox(span("grave", "† 前の自分の墓"), [...epitaphLines(g).map(l => span("tip-sub", l)), relic]);
   }
+  if (chestAt(x, y)) return chestTipHTML("宝箱");
+  if (treasureSpotAt(x, y)) {
+    return tipBox(span("treasure", "X 宝の印"), ["宝の地図に書かれていた場所。乗ると宝を掘り出せる"]);
+  }
   const it = itemAt(x, y);
+  if (it && it.treasureMap) {
+    return tipBox(span("map-item", "{ 宝の地図"), [
+      `地下${it.treasureMap.mapDepth}階に宝が眠っているらしい`,
+      span("tip-sub", "拾うと道具の枠を1つ使う。その階を過ぎると使えなくなる"),
+    ]);
+  }
+  if (it && it.lump) {
+    return tipBox(span("lump", "% 謎の塊"), [
+      "拾っておくと、キャンプで鑑定されてレア度つきの装備になる",
+      span("tip-sub", "鑑定する前に死ぬとなくなる"),
+    ]);
+  }
   if (it && it.book) {
     const found = base.records.booksFound[it.book.id];
     return tipBox(span("book", "? 書"), [found ? span("book", it.book.name) : span("dim", "？？？(まだ手に入れたことのない書)")]);
+  }
+  const hz = !it && hazardAt(x, y);
+  if (hz) {
+    const t = HAZARD_TYPES[hz], b = BALANCE.hazards[hz];
+    return tipBox(span(t.cls, `${t.symbol} ${t.name}`), [
+      `上にいるあいだ、行動するたびにダメージ。${DOT_TYPES[t.dot].name}にもなる(${b.dotTurns}ターン)`,
+      span("tip-sub", "敵は平気。押しっぱなしで歩いているときは、手前で止まる"),
+    ]);
   }
   if (it) {
     const eq = it.equip;
@@ -134,6 +161,14 @@ function tooltipHTML(x, y) {
     return tipBox(span(type.cls, `${type.symbol} ${type.name}の装備`), [found ? esc(equipName(eq)) : span("dim", "？？？(まだ拾ったことのない装備)")]);
   }
   return "";
+}
+
+// 宝箱の詳細。name:見出しの名前(本物は「宝箱」。ミミックは「宝笛」のような少しおかしい名前)
+function chestTipHTML(name) {
+  return tipBox(span("chest", `& ${esc(name)}`), [
+    "上に乗ると開く",
+    span("tip-sub", "床の装備や、この階に出る敵の固有装備が入っている"),
+  ]);
 }
 
 // 敵の詳細。図鑑に登録されていない(まだ戦ったことのない)敵は「？？？」
@@ -145,14 +180,14 @@ function monsterTipHTML(m) {
     return tipBox(`${title}${span("dim", "？？？")}`, [
       span("tip-sub", "まだ戦ったことのない敵。戦うと図鑑に登録され、詳しいことが分かる"),
       m.primed ? span("down", "膨らんでいる！ 次に爆発する") : "",
-      m.charging ? span("down", "息を溜めている！ 赤いマスから離れろ") : "",
+      m.charging ? span("down", `${d.ability.type === "sweep" ? "大技を構えている" : d.ability.type === "rush" ? "突進を溜めている" : "息を溜めている"}！ 赤いマスから離れろ`) : "",
     ]);
   }
-  const clan = monsterClan(d);
+  const badges = monsterClans(d).map(c => " " + clanBadgeHTML(c)).join(""); // 一族の札(2つある敵は両方)
   const tag = m.guardian ? span("elite-tag", "墓守") : m.elite ? span("elite-tag", "エリート") : "";
   const [lo, hi] = monsterPowerRange(m);
   // 見出しの右側:エリートなどの印と、一族の札
-  const head = `${title}${esc(monsterName(m))}<span class="tip-head-right">${tag}${clan ? " " + clanBadgeHTML(clan) : ""}</span>`;
+  const head = `${title}${esc(monsterName(m))}<span class="tip-head-right">${tag}${badges}</span>`;
   // HP はゲージつき(残りが半分を切ると黄色、4分の1を切ると赤)
   const ratio = m.hp / m.maxHp;
   const hpColor = ratio > 0.5 ? "#4cd964" : ratio > 0.25 ? "#ffcc00" : "#ff3b30";
@@ -170,11 +205,15 @@ function monsterTipHTML(m) {
   // 今の状態
   if (m.dormant) lines.push(span("dim", "眠っている(攻撃するか、遺品を拾うと目を覚ます)"));
   if (m.primed) lines.push(span("down", "膨らんでいる！ 次に爆発する"));
-  if (m.charging) lines.push(span("down", `${ELEMENT_DATA[d.ability.element].name}のブレスを溜めている！ 赤いマスから離れろ`));
+  if (m.charging) lines.push(span("down", d.ability.type === "sweep"
+    ? `${m.chargeKind === "spin" ? "回転切り" : "薙ぎ払い"}を構えている！ 赤いマスから離れろ`
+    : d.ability.type === "rush" ? "突進を溜めている！ 赤い線から横へ離れろ"
+    : `${ELEMENT_DATA[d.ability.element].name}のブレスを溜めている！ 赤いマスから離れろ`));
+  if (m.stunned > 0) lines.push(span("dim", `体勢を崩している(あと${m.stunned}回動けない)`));
   if (m.summoned) lines.push(span("dim", "呼び出されたもの(倒しても素材だけ。術師を倒すと崩れ落ちる)"));
   const boss = commanderOf(m);
   if (boss) lines.push(span("down", `${esc(monsterName(boss))}の号令で、攻撃力+${Math.round(boss.data.ability.atkUp * 100)}%`));
   if (m.poison) lines.push(span("poison", `毒 ${m.poison.dmg}×${m.poison.turns}`));
-  if (m.fleeing > 0) lines.push(span("down", "回復薬を盗んで逃げている(倒せば取り返せる)"));
+  if (m.fleeing > 0) lines.push(span("down", `${m.stolenTool ? esc(toolLabel(m.stolenTool)) : "回復薬"}を盗んで逃げている(倒せば取り返せる)`));
   return tipBox(head, lines);
 }

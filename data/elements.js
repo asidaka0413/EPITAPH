@@ -12,9 +12,10 @@ const DAMAGE_CATEGORIES = {
   explosion: "爆発",       // 爆ぜ虫の爆発
   breath:    "ブレス",     // ドラゴンの扇形のブレス
   dot:       "状態異常",   // 毒・やけどなど、毎ターンのダメージ
+  terrain:   "地形",       // 毒沼・マグマなどのダメージ床
 };
 
-// 属性。id → { name:表示名, color:表示の色, ballName:属性の球の名前, dot:当たったときの状態異常(js/enemies.js の DOT_TYPES の id) }
+// 属性。id → { name:表示名, color:表示の色, ballName:属性の球の名前, dot:当たったときの状態異常(js/ailments.js の DOT_TYPES の id) }
 //   氷・雷などは、「龍」の一族を作るときに足す予定(状態異常も一緒に DOT_TYPES に足す)
 const ELEMENT_DATA = {
   fire:   { name: "火", color: "#ff7a40", ballName: "火球",   dot: "burn" },
