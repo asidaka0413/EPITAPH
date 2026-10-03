@@ -7,11 +7,12 @@ const BALANCE = {
   //   enemySlope:その層での、敵の「1階ごとの上がり幅」の倍率(深い層ほど、1階降りるごとに強くなる量が大きい)
   //   enemyBoost:その層の敵のHP・攻撃力にかける倍率(層に入った瞬間に、一段強くなる)
   //   深い層は、やりこんだ前提の強さにするため(中層から下の数値は仮)
+  //   bgm:その層で流す曲(下の BGM_TRACKS の名前。js/bgm.js)
   layers: [
-    { name: "低層",   until: 50,  enemySlope: 1,   enemyBoost: 1 },
-    { name: "中層",   until: 100, enemySlope: 1.5, enemyBoost: 1.2 },
-    { name: "深層",   until: 150, enemySlope: 2,   enemyBoost: 1.4 },
-    { name: "最深層", until: 200, enemySlope: 3,   enemyBoost: 1.6 },
+    { name: "低層",   until: 50,  enemySlope: 1,   enemyBoost: 1,   bgm: "low" },
+    { name: "中層",   until: 100, enemySlope: 1.5, enemyBoost: 1.2, bgm: "mid" },
+    { name: "深層",   until: 150, enemySlope: 2,   enemyBoost: 1.4, bgm: "deep" },
+    { name: "最深層", until: 200, enemySlope: 3,   enemyBoost: 1.6, bgm: "abyss" },
   ],
   goalDepth: 200,
 
@@ -262,6 +263,17 @@ const BALANCE = {
   seVolumeStep: 10,       // 設定画面で1回に変わる音量
   seMasterGain: 0.3,      // 全体の大きさ(音量100のとき。大きすぎて割れないように小さめ)
   seRepeatGapMs: 40,      // 同じ音をこのミリ秒以内にもう一度鳴らさない(敵がたくさんいるとき、重なってうるさくならないように)
+
+  // BGM(js/bgm.js。曲の楽譜は下の BGM_TRACKS)
+  bgmVolumeDefault: 40,   // 最初の音量(0〜100)
+  bgmVolumeStep: 10,      // 設定画面で1回に変わる音量
+  bgmMasterGain: 0.15,    // 全体の大きさ(音量100のとき。効果音より小さめにして、じゃまにならないように)
+  bgmFadeSec: 1.0,        // 曲が始まる・終わるときに、じわっと大きく/小さくする秒数
+  bgmLookaheadSec: 0.3,   // 何秒先の音まで前もって用意しておくか(大きいほど途切れにくい)
+  bgmTickMs: 100,         // 何ミリ秒ごとに、次の音を用意しに行くか
+  // この敵がこちらに気づいて追いかけているあいだは、ボスの曲(boss)にする(襲ってこない龍は、怒らせてから)
+  bgmBossIds: ["behemoth", "dragonzombie"], // 敵の id
+  bgmBossClans: ["elderdragons"],           // 一族(龍の一族)
 };
 
 // ==================== 効果音の形 ====================
@@ -427,6 +439,115 @@ const SE_NAMES = {
   achieve: "実績を取った", engrave: "刻む",
   ail_poison: "毒になった", ail_burn: "やけどになった", ail_slow: "鈍足になった", ail_blind: "盲目になった",
   ail_confuse: "混乱した", ail_bind: "拘束された", ail_chill: "凍えた", ail_shock: "しびれた", ail_weak: "衰弱した",
+};
+
+// ==================== BGM の楽譜 ====================
+// 音のファイルは使わず、js/bgm.js がこの楽譜からその場で音を作る。最後まで行ったら最初に戻ってくり返す
+// 曲の形:
+//   bpm:速さ(1分に何拍)。楽譜の1マスは半拍(8分音符)
+//   voices:同時に鳴らす「パート」の並び。パート1つの形:
+//     wave:音の種類(sine=やわらか / triangle=少しはっきり / square・sawtooth=ピコピコ・ギザギザ / noise=ザーッという雑音。風や太鼓に使う)
+//     vol:大きさ(0〜1)/ len:1つの音を何マス鳴らすか / atk:音がふくらむまでの秒数(長いとふわっと始まる)
+//     lp:(省略できる)この高さより上の音を削って、こもった音にする
+//     notes:楽譜。マスを空白で区切る。「C4」= ド(4 は高さ。数が大きいほど高い)・「#」は半音上げる・
+//            「.」= 休み・「A2+E3」= いっしょに鳴らす・「x」= 雑音を鳴らす(noise のパート用)・
+//            「.*15」= 休みを15マス(「D2*4」なら D2 を4回)・「|」は小節の区切り(読みやすくするためだけ。無視される)
+//   パートごとに楽譜の長さがちがってもよい(短いパートは先にくり返す)
+//   どの画面でどの曲か:js/bgm.js の bgmTrackForScreen(ダンジョンの層ごとの曲は BALANCE.layers の bgm)
+const BGM_TRACKS = {
+  // 拠点:おだやか(ハ長調。C → Am → F → G をくり返す)
+  town: { bpm: 76, voices: [
+    { wave: "sine", vol: 0.5, len: 7, atk: 0.05,
+      notes: "C2 . . . . . . . | A1 . . . . . . . | F1 . . . . . . . | G1 . . . . . . ." },
+    { wave: "triangle", vol: 0.12, len: 8, atk: 0.4, lp: 1200,
+      notes: "E3+G3 . . . . . . . | C3+E3 . . . . . . . | A2+C3 . . . . . . . | B2+D3 . . . . . . ." },
+    { wave: "triangle", vol: 0.3, len: 2, atk: 0.02, lp: 2500,
+      notes: "E5 . G5 . C6 . G5 . | A5 . . . E5 . C5 . | F5 . A5 . C6 . A5 . | G5 . . . D5 . B4 . |" +
+             "E5 . . . G5 . E5 . | C5 . . . E5 . A4 . | A4 . C5 . F5 . E5 . | D5 . . . . . . ." },
+  ] },
+  // 低層:暗く静か(イ短調。低い音がずっと鳴り、ときどき冷たい音がぽつんと鳴る)
+  low: { bpm: 56, voices: [
+    { wave: "sine", vol: 0.5, len: 16, atk: 1.0,
+      notes: "A1 . . . . . . . . . . . . . . . | A1 . . . . . . . . . . . . . . . |" +
+             "F1 . . . . . . . . . . . . . . . | E1 . . . . . . . . . . . . . . ." },
+    { wave: "triangle", vol: 0.1, len: 16, atk: 1.5, lp: 600,
+      notes: "A2+E3 . . . . . . . . . . . . . . . | A2+C3 . . . . . . . . . . . . . . . |" +
+             "F2+C3 . . . . . . . . . . . . . . . | E2+B2 . . . . . . . . . . . . . . ." },
+    { wave: "triangle", vol: 0.22, len: 6, atk: 0.03, lp: 1200,
+      notes: ". . . . E4 . . . . . . . C4 . . . | . . . . . . . . B3 . . . . . . . |" +
+             ". . . . F4 . . . . . E4 . . . . . | . . . . . . . . G#3 . . . . . . ." },
+  ] },
+  // 中層:もっと暗く(ニ短調。こもったギザギザの低音・ぶつかり合う和音・遠くの風)
+  mid: { bpm: 52, voices: [
+    { wave: "sawtooth", vol: 0.25, len: 32, atk: 2, lp: 250,
+      notes: "D1 .*31 | A#0 .*31" },
+    { wave: "triangle", vol: 0.1, len: 16, atk: 2, lp: 500,
+      notes: "D3+F3 .*15 | D3+G#3 .*15 | A#2+D3 .*15 | A2+C#3 .*15" },
+    { wave: "sine", vol: 0.2, len: 6, atk: 0.05, lp: 1500,
+      notes: ".*4 A4 .*5 F4 .*5 | .*8 G#4 .*7 | .*4 D5 .*3 C#5 .*7 | .*12 A3 .*3" },
+    { wave: "noise", vol: 0.05, len: 24, atk: 3, lp: 400,
+      notes: "x .*31 | .*16 x .*15" },
+  ] },
+  // 深層:重く冷たい(ホ短調。とても低いうなり・不気味な鐘・低くうめくような旋律)
+  deep: { bpm: 46, voices: [
+    { wave: "sawtooth", vol: 0.3, len: 32, atk: 3, lp: 200,
+      notes: "E1 .*31 | F1 .*31" },
+    { wave: "sine", vol: 0.22, len: 14, atk: 0.005,
+      notes: "E4+A#4 .*15 | .*16 | F4+B4 .*15 | .*16" },
+    { wave: "triangle", vol: 0.15, len: 8, atk: 0.1, lp: 800,
+      notes: ".*8 G3 .*7 | F3 .*7 E3 .*7 | .*8 G3 .*3 A#3 .*3 | A3 .*7 G3 .*3 F3 .*3" },
+    { wave: "noise", vol: 0.07, len: 32, atk: 4, lp: 300,
+      notes: "x .*31 | x .*31" },
+  ] },
+  // 最深層:ほとんど無音(にごった低いうなり・ゆっくりした鼓動・ささやくような風・遠くで鳴る高い音)
+  abyss: { bpm: 40, voices: [
+    { wave: "sawtooth", vol: 0.3, len: 64, atk: 5, lp: 150,
+      notes: "C1+C#1 .*63" },
+    { wave: "sine", vol: 0.5, len: 1, atk: 0.005,
+      notes: "C2 . C2 .*13" },
+    { wave: "noise", vol: 0.04, len: 16, atk: 2, lp: 800,
+      notes: ".*8 x .*23" },
+    { wave: "sine", vol: 0.08, len: 16, atk: 1,
+      notes: ".*16 D#5 .*31 A5 .*15" },
+  ] },
+  // ひと休み(キャンプ・分かれ道):暗いけれど少し落ち着く(イ短調の静かな分散和音)
+  rest: { bpm: 60, voices: [
+    { wave: "sine", vol: 0.4, len: 16, atk: 0.5,
+      notes: "A1 .*15 | F1 .*15 | C2 .*15 | E1 .*15" },
+    { wave: "triangle", vol: 0.18, len: 4, atk: 0.02, lp: 1800,
+      notes: "A3 . C4 . E4 . C4 . A3 . C4 . E4 . C4 . | F3 . A3 . C4 . A3 . F3 . A3 . C4 . A3 . |" +
+             "C4 . E4 . G4 . E4 . C4 . E4 . G4 . E4 . | E3 . G#3 . B3 . G#3 . E3 . G#3 . B3 . D4 ." },
+    { wave: "sine", vol: 0.15, len: 10, atk: 0.2,
+      notes: ".*4 E5 .*11 | .*4 C5 .*7 A4 .*3 | .*4 G4 .*11 | .*4 G#4 .*11" },
+  ] },
+  // ボス(BALANCE.bgmBossIds・bgmBossClans の敵に追われているとき):速く刻む低音と太鼓で緊張感(ニ短調)
+  boss: { bpm: 120, voices: [
+    { wave: "sawtooth", vol: 0.3, len: 1, atk: 0.005, lp: 500,
+      notes: "D2*16 | A#1*16 | G1*16 | A1*16" },
+    { wave: "noise", vol: 0.25, len: 1, atk: 0.002, lp: 2000,
+      notes: "x . . . x . x . x . . . x . x x" },
+    { wave: "square", vol: 0.12, len: 3, atk: 0.01, lp: 1500,
+      notes: "D4 .*2 F4 .*2 A4 . G#4 .*7 | A#3 .*2 D4 .*2 F4 . E4 .*7 |" +
+             "G3 .*2 A#3 .*2 D4 . C#4 .*7 | A3 .*2 C#4 .*2 E4 . G4 .*3 F4 .*3" },
+    { wave: "sawtooth", vol: 0.08, len: 16, atk: 0.3, lp: 700,
+      notes: "D3+F3+A3 .*15 | A#2+D3+F3 .*15 | G2+A#2+D3 .*15 | A2+C#3+E3 .*15" },
+  ] },
+  // 死んだあと(リザルト・刻む):弔いの鐘と、ゆっくりした葬送の旋律(ニ短調)
+  requiem: { bpm: 50, voices: [
+    { wave: "sine", vol: 0.3, len: 16, atk: 0.005,
+      notes: "D4+A4 .*15 | .*16 | A#3+F4 .*15 | .*16 | G3+D4 .*15 | .*16 | A3+C#4 .*15 | .*16" },
+    { wave: "triangle", vol: 0.12, len: 32, atk: 2, lp: 700,
+      notes: "D3+F3 .*31 | A#2+D3 .*31 | G2+A#2 .*31 | A2+E3 .*31" },
+    { wave: "sine", vol: 0.18, len: 6, atk: 0.1,
+      notes: ".*8 A4 .*3 G4 .*3 | F4 .*7 E4 .*7 | .*8 D4 .*3 F4 .*3 | E4 .*15 |" +
+             ".*8 D4 .*3 C4 .*3 | A#3 .*7 D4 .*7 | .*8 C#4 .*3 E4 .*3 | D4 .*15" },
+  ] },
+};
+
+// BGM の表示名(デバッグの「サウンドテスト」画面に出す。js/debug.js)
+const BGM_NAMES = {
+  town: "拠点", low: "低層", mid: "中層", deep: "深層", abyss: "最深層",
+  rest: "ひと休み(キャンプ・分かれ道)", boss: "強い敵に追われている", requiem: "死んだあと",
 };
 
 // ==================== レア度(謎の塊を鑑定して出る装備) ====================

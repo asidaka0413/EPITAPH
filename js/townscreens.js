@@ -529,6 +529,7 @@ function drawTownAchieve() {
   }
 
   h += `<div class="list-gap"></div><div class="note">達成 ${achievementCount()}/${achievementList.length}　取っても強さは変わらない(記念)</div>`;
+  if (base.tampered) h += `<div class="note">${span("down", "⚠ セーブデータに書きかえた跡があるので、これからは実績を取れない")}</div>`;
   setScreen("拠点 - 実績", h, false);
   setHint([["←→", "タブ"], ["↑↓", "スクロール"], ["Esc / Q", "戻る"]]);
 }
@@ -540,6 +541,7 @@ function drawTownSettings() {
     h += gridRow(i === townCursor, "20em 1fr", [esc(item.name), item.value()]);
   });
   h += `<div class="list-gap"></div><div class="note">${lastSavedAt ? `最終セーブ ${lastSavedAt.toLocaleString()}` : "まだセーブしていません"}</div>`;
+  if (base.tampered) h += `<div class="note">${span("down", "⚠ 改ざんあり(セーブデータに書きかえた跡がある。実績は取れない)")}</div>`;
   setScreen("拠点 - 設定", h, false);
   setHint([["↑↓", "選ぶ"], ["Enter / Space", "切り替え / 実行"], ["←→", "音量"], ["Esc / Q", "戻る"]]);
 }

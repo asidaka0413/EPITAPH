@@ -361,6 +361,13 @@ const TOWN_SETTINGS = [
     value: () => `${base.settings.seVolume} ${span("dim", "(←→ で変える)")}`,
     apply: () => cycleSEVolume(), // Enter は上げていき、100 の次は 0 に戻る
     adjust: d => changeSEVolume(d) },
+  { name: "BGM",
+    value: () => bgmEnabled() ? span("up", "ON") : span("dim", "OFF"),
+    apply: () => toggleBGM() },
+  { name: "BGM の音量",
+    value: () => `${base.settings.bgmVolume ?? BALANCE.bgmVolumeDefault} ${span("dim", "(←→ で変える)")}`,
+    apply: () => cycleBGMVolume(), // Enter は上げていき、100 の次は 0 に戻る
+    adjust: d => changeBGMVolume(d) },
   { name: "デバッグモード",
     shown: () => DEBUG_ALLOWED, // アドレスに ?debug を付けて開いたときだけ(js/debug.js)
     value: () => base.settings.debug ? `${span("up", "ON")} ${span("dim", "(実績は取れない)")}` : span("dim", "OFF"),

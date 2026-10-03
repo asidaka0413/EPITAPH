@@ -68,6 +68,7 @@ document.addEventListener("keydown", (e) => {
 // キーが押されたとき(キーボードでも、スマホの操作ボタン(js/touch.js)でも、ここを通る)
 //   key:KEY_ALIASES で置き換えたあとのキー / repeat:押しっぱなしの繰り返しなら true
 function pressKey(key, repeat) {
+  bgmUnlocked = true; // キーを押したので、もう BGM を鳴らしてよい(js/bgm.js)
   if (playerDying) return; // 自分が砕け散っているあいだは、何もしない
   if (refineFinishing) return; // 最後に刻んだ光を見せているあいだも、何もしない(js/items.js)
   // 押しっぱなしの Enter / Space は無視する(分かれ道 → キャンプ、リザルト → 刻む が勝手に決まらないように)
@@ -106,6 +107,7 @@ function pressKey(key, repeat) {
     lastRepeatMoveAt = now;
   }
   handleKey({ key });
+  updateBGM(); // 画面が変わっていたら曲を切りかえる(最初にキーを押したときは、ここで曲が始まる)
   checkAchievements(); // 実績の条件を満たしたか
 }
 

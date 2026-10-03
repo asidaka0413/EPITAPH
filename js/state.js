@@ -110,10 +110,14 @@ function newBase() {
       autoEquip: true, // 装備を拾ったとき、空いている枠があれば自動で装備する
       se: true,        // 効果音(js/sound.js)
       seVolume: BALANCE.seVolumeDefault, // 効果音の音量(0〜100)
+      bgm: true,       // BGM(js/bgm.js)
+      bgmVolume: BALANCE.bgmVolumeDefault, // BGM の音量(0〜100)
       debug: false,           // デバッグモード(画面右にデバッグ用のボタンを出す)
       debugAlwaysDrop: false, // デバッグ:敵が必ず書と固有装備を落とす
       debugInvincible: false, // デバッグ:無敵(ダメージを受けない)
     },
+    // セーブデータが書きかえられた跡があるか(true になったら戻らない。実績が取れなくなる。下の「セーブデータの形」)
+    tampered: false,
     // 酒場の依頼の報酬で手に入るお金(死んでもなくならない)
     gold: 0,
     // 道具屋(js/shop.js)。built:建てたか / unlocked:納品して解放した品(品の id → true)
@@ -363,6 +367,66 @@ const SAVE_MIGRATIONS = {
 
 let lastSavedAt = null; // 最後にセーブした時刻(設定パネルに表示)
 
+// ==================== セーブデータの形(読めない形と改ざんの印) ====================
+// セーブ(localStorage)と書き出したファイルは、メモ帳で開いても読めない形にする
+//   形:「EPITAPH1:」+ 中身を SAVE_SCRAMBLE で混ぜて base64(英数字の並び)にしたもの
+//   中身は { body: セーブの JSON の文字, sig: body から計算した印 }。body を書きかえると印が合わなくなる
+//   印が合わないセーブも読み込むが、base.tampered を true にする(実績が取れなくなる。消えたりはしない)
+//   ※ プログラムは誰でも読めるので、くわしい人なら破れる。気軽な書きかえを防ぐためのもの
+// 以前の形(そのまま読める JSON)は、savedAt が SAVE_SEAL_SINCE より前なら、今までどおり読む(それより新しい日付なら改ざんあり)
+const SAVE_PREFIX = "EPITAPH1:";
+const SAVE_SCRAMBLE = "epitaph-grave-of-the-nameless"; // 混ぜるときの合言葉
+const SAVE_SIG_SALT = "rest-in-the-deep-200";          // 印を計算するときに足す文字
+const SAVE_SEAL_SINCE = "2026-10-07";                  // この日より後に作られた「読める形」のセーブは改ざんあり
+
+// 文字の並びから印を計算する(cyrb53 という計算。1文字でも変わると、まったくちがう印になる)
+function saveSigOf(text) {
+  const str = SAVE_SIG_SALT + text;
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+// 文字のバイトを合言葉で混ぜる(もう一度同じことをすると元に戻る)
+function scrambleSaveBytes(bytes) {
+  for (let i = 0; i < bytes.length; i++) bytes[i] ^= SAVE_SCRAMBLE.charCodeAt(i % SAVE_SCRAMBLE.length);
+  return bytes;
+}
+
+// セーブの中身(オブジェクト)→ 読めない形の文字
+function encodeSaveText(data) {
+  const body = JSON.stringify(data);
+  const bytes = scrambleSaveBytes(new TextEncoder().encode(JSON.stringify({ body, sig: saveSigOf(body) })));
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192)); // 一度に変換すると大きいセーブで失敗するので、少しずつ
+  return SAVE_PREFIX + btoa(bin);
+}
+
+// セーブの文字 → { data: 中身, tampered: 書きかえた跡があるか }。セーブとして読めなければ null
+//   読める形(以前の JSON)も読む
+function decodeSaveText(text) {
+  try {
+    if (!text.startsWith(SAVE_PREFIX)) {
+      const data = JSON.parse(text);
+      const old = typeof data.savedAt === "string" && data.savedAt < SAVE_SEAL_SINCE; // 日付の文字は、そのまま大小をくらべられる
+      return { data, tampered: !old };
+    }
+    const bin = atob(text.slice(SAVE_PREFIX.length));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const outer = JSON.parse(new TextDecoder().decode(scrambleSaveBytes(bytes)));
+    return { data: JSON.parse(outer.body), tampered: outer.sig !== saveSigOf(outer.body) };
+  } catch (e) {
+    return null;
+  }
+}
+
 // セーブする中身(バージョン・日時・base)を作る
 function makeSaveData() {
   // materialSet は刻印そのものではなく「materials の何番目か」で保存する
@@ -375,7 +439,7 @@ function saveGame() {
   try {
     const data = makeSaveData();
     lastSavedAt = new Date(data.savedAt);
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    localStorage.setItem(SAVE_KEY, encodeSaveText(data)); // 読めない形にして保存(上の「セーブデータの形」)
     drawSettings();
   } catch (e) {
     console.warn("セーブできませんでした", e);
@@ -402,13 +466,12 @@ function loadGame() {
   }
   if (!text) return "はじめから始めます";
 
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch (e) {
+  const decoded = decodeSaveText(text); // 読めない形を元に戻す(以前の読める形もそのまま読む)
+  if (!decoded || !decoded.data || typeof decoded.data !== "object") {
     backupSave(`${SAVE_KEY}-broken`, text); // 壊れたデータは念のため別の名前で残す
     return "⚠ セーブデータが壊れていたので、はじめから始めます";
   }
+  let data = decoded.data;
 
   // 古いバージョンなら、1つずつ新しい形に直していく
   const migrated = data.version < SAVE_VERSION;
@@ -535,6 +598,8 @@ function loadGame() {
   base.quests.board = Array.isArray(qs.board) ? qs.board.filter(okQuest) : null;
   base.quests.special = okQuest(qs.special) ? qs.special : null;
   base.quests.accepted = Array.isArray(qs.accepted) ? qs.accepted.filter(okQuest) : [];
+  // 改ざんの印:一度でも書きかえた跡が見つかったら、ずっとそのまま(印が合っていても、前に付いた跡は消えない)
+  base.tampered = b.tampered === true || decoded.tampered;
   if (data.savedAt) lastSavedAt = new Date(data.savedAt);
   checkLevelUp(); // 経験値の計算方法が変わって、もうレベルが上がれる分たまっていたら上げる
   if (migrated) saveGame(); // 新しい形に直したら、すぐ保存しておく(次に読むとき直し直さないように)
@@ -546,14 +611,15 @@ function loadGame() {
 //   (ダブルクリックで開いたゲームと、GitHub Pages で開いたゲームは、セーブを共有しない)
 //   なので、セーブデータをファイルにして持ち運べるようにする
 
-// 今のセーブデータを .json ファイルとしてダウンロードする
+// 今のセーブデータをファイルとしてダウンロードする(中身はブラウザのセーブと同じ、読めない形)
+//   名前は .json のまま(以前に書き出したファイルと同じように選べるように)
 function exportSave() {
   saveGame(); // 最新の状態にしてから
-  const text = JSON.stringify(makeSaveData());
+  const text = encodeSaveText(makeSaveData());
   const d = new Date();
   const pad = n => String(n).padStart(2, "0");
   const name = `epitaph-save-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
-  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const url = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
@@ -582,8 +648,9 @@ function importSave() {
 // 読み込んだファイルの中身(text)を確かめて、今のセーブデータと入れ替える
 //   今のセーブデータは、念のため rog-save-before-import という名前で残しておく
 function importSaveText(text) {
-  let data = null;
-  try { data = JSON.parse(text); } catch (e) { /* 下でまとめて調べる */ }
+  text = text.trim(); // 前後の空白・改行は無視する
+  const decoded = decodeSaveText(text); // 読めない形を元に戻す(以前の読める形もそのまま読む)
+  const data = decoded ? decoded.data : null;
   if (!data || typeof data.version !== "number" || !data.base || typeof data.base !== "object") {
     addLog("⚠ このファイルは EPITAPH のセーブデータではないようです");
     render();
@@ -596,7 +663,8 @@ function importSaveText(text) {
   }
   const level = typeof data.base.level === "number" ? data.base.level : "?";
   const when = data.savedAt ? new Date(data.savedAt).toLocaleString() : "日時不明";
-  if (!confirm(`このセーブデータ(Lv.${level}、${when} にセーブ)を読み込みますか？\n今のセーブデータは上書きされます`)) return;
+  const warn = decoded.tampered || data.base.tampered === true ? "\n⚠ 書きかえられた跡があります(読み込むと、実績が取れなくなります)" : "";
+  if (!confirm(`このセーブデータ(Lv.${level}、${when} にセーブ)を読み込みますか？\n今のセーブデータは上書きされます${warn}`)) return;
   try {
     const old = localStorage.getItem(SAVE_KEY);
     if (old) localStorage.setItem(`${SAVE_KEY}-before-import`, old);

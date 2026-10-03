@@ -94,8 +94,9 @@ function achievementMet(a) {
 // まだ取っていない実績の条件を調べて、満たしていれば取る(キーを押すたび・冒険が終わったとき)
 //   取った実績は base.achievements に「取った日」で残す
 //   デバッグモードが効いているあいだは取れない(js/debug.js の debugOn。OFF に戻せばまた取れる)
+//   セーブデータに書きかえた跡があるときも取れない(base.tampered。js/state.js の「セーブデータの形」)
 function checkAchievements() {
-  if (debugOn()) return;
+  if (debugOn() || base.tampered) return;
   const got = [];
   for (const a of achievementList) {
     if (base.achievements[a.id] || !achievementMet(a)) continue;

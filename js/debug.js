@@ -139,8 +139,15 @@ function enterTestFloor(d) {
 // ==================== サウンドテスト ====================
 // 効果音(config.js の SE_SOUNDS)を1つずつ選んで鳴らす画面(デバッグ用)
 //   並びは SE_SOUNDS に書いた順。名前は SE_NAMES。Esc で開く前の画面に戻る
-let soundTestCursor = 0;   // 選んでいる音の番号
+//   効果音の下に BGM(BGM_TRACKS・名前は BGM_NAMES)も並ぶ。Enter で流す・もう一度 Enter で止める(js/bgm.js の bgmPreview)
+let soundTestCursor = 0;   // 選んでいる音の番号(効果音のあとに BGM が続く)
 let soundTestBack = null;  // 開く前の screenMode(戻るときに使う)
+
+// サウンドテストに並べるもの:{ kind: "se" か "bgm", name }
+function soundTestItems() {
+  return [...Object.keys(SE_SOUNDS).map(name => ({ kind: "se", name })),
+          ...Object.keys(BGM_TRACKS).map(name => ({ kind: "bgm", name }))];
+}
 
 function openSoundTest() {
   if (screenMode === "soundtest") return;
@@ -151,26 +158,34 @@ function openSoundTest() {
 function closeSoundTest() {
   screenMode = soundTestBack || "town";
   soundTestBack = null;
+  bgmPreview = null; // 流していた BGM は止めて、戻った画面の曲にする
   render();
 }
 
 function drawSoundTest() {
-  const names = Object.keys(SE_SOUNDS);
   let h = "";
   if (!seEnabled()) h += `<div class="note">効果音が OFF になっている(拠点の設定で ON にすると鳴る)</div>`;
-  h += `<div class="note">音量 ${base.settings.seVolume ?? BALANCE.seVolumeDefault}(拠点の設定で変えられる)</div>`;
-  names.forEach((n, i) => {
-    h += gridRow(i === soundTestCursor, "12em 1fr", [esc(SE_NAMES[n] || n), span("dim", n)]);
+  if (!bgmEnabled()) h += `<div class="note">BGM が OFF になっている(拠点の設定で ON にすると流れる)</div>`;
+  h += `<div class="note">音量 効果音 ${base.settings.seVolume ?? BALANCE.seVolumeDefault} / BGM ${base.settings.bgmVolume ?? BALANCE.bgmVolumeDefault}(拠点の設定で変えられる)</div>`;
+  soundTestItems().forEach((item, i) => {
+    if (item.kind === "bgm" && i > 0 && soundTestItems()[i - 1].kind === "se") h += `<div class="list-gap"></div><div class="list-title"><b>BGM</b></div>`;
+    const label = item.kind === "se" ? esc(SE_NAMES[item.name] || item.name) : esc(BGM_NAMES[item.name] || item.name);
+    const playing = item.kind === "bgm" && bgmPreview === item.name ? span("up", " ♪ 再生中") : "";
+    h += gridRow(i === soundTestCursor, "16em 1fr", [label, span("dim", item.name) + playing]);
   });
   setScreen("サウンドテスト", h, false);
-  setHint([["↑↓", "選ぶ"], ["Enter / Space", "鳴らす"], ["Esc / Q", "もどる"]]);
+  setHint([["↑↓", "選ぶ"], ["Enter / Space", "鳴らす(BGM はもう一度で止める)"], ["Esc / Q", "もどる"]]);
 }
 
 function soundTestKey(e) {
-  const names = Object.keys(SE_SOUNDS);
+  const items = soundTestItems();
   if (e.key === "ArrowUp") soundTestCursor = Math.max(0, soundTestCursor - 1);
-  else if (e.key === "ArrowDown") soundTestCursor = Math.min(names.length - 1, soundTestCursor + 1);
-  else if (e.key === "Enter") playSE(names[soundTestCursor]);
+  else if (e.key === "ArrowDown") soundTestCursor = Math.min(items.length - 1, soundTestCursor + 1);
+  else if (e.key === "Enter") {
+    const item = items[soundTestCursor];
+    if (item.kind === "se") playSE(item.name);
+    else bgmPreview = bgmPreview === item.name ? null : item.name; // 曲の切りかえは render の updateBGM がする
+  }
   else if (e.key === "Escape") { closeSoundTest(); return; }
   render();
 }

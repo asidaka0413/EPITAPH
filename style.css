@@ -48,6 +48,9 @@ body {
 /* 操作説明:長くても左の画面の幅を広げないように、画面の幅に合わせて折り返す */
 #hint { color: #8a8aa0; font-size: 14px; width: 0; min-width: 100%; display: flex; flex-wrap: wrap; gap: 4px 20px; }
 #hint > span { white-space: nowrap; }
+/* ステータス欄も同じ:状態異常・自害のカウントなどが増えても左の画面の幅を広げず、折り返す
+   (border-box:枠と内側の余白をふくめて 100% にする。これがないと余白のぶん、はみ出す) */
+#status-panel { width: 0; min-width: 100%; box-sizing: border-box; }
 kbd {
   font-family: inherit; background: #1d1d26; border: 1px solid #444; border-radius: 3px;
   padding: 0 5px; color: #ccc;

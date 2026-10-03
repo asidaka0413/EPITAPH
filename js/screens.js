@@ -40,6 +40,7 @@ function render() {
   }
   drawLog();
   drawQuestPanel(); // 右側の「依頼」欄(いつでも出す)
+  updateBGM(); // 画面に合わせて BGM を切りかえる(死んで画面が変わったときなど、キーを押さずに変わることもあるため。js/bgm.js)
   drawSettings();
   drawDebug();
   updateTooltip(); // マウスを合わせたままでも、敵が動いたら詳細ウィンドウの中身を更新する
