@@ -10,10 +10,11 @@ function isEliteFloor(d) {
 }
 
 // 階段の部屋に、この階で出る敵を1種類選んでエリートとして置く(階段の2マス左)
-//   出てきたばかりの敵(出始めてから eliteMinFloorsSeen 階以内)はエリートにならない
+//   出てきたばかりの敵(出始めてから eliteMinFloorsSeen 階以内)と、noElite の敵(宝石虫など)はエリートにならない
 function placeElite(room) {
-  const pool = monsterList.filter(m => m.minDepth <= depth - BALANCE.eliteMinFloorsSeen);
-  const data = pickWeighted(pool.length > 0 ? pool : monsterList, depth);
+  const able = monsterList.filter(m => !m.noElite);
+  const pool = able.filter(m => m.minDepth <= depth - BALANCE.eliteMinFloorsSeen);
+  const data = pickWeighted(pool.length > 0 ? pool : able, depth);
   if (!data) return;
   const x = Math.max(room.x, stairs.x - 2);
   monsters.push(newMonster(data, x, stairs.y, { elite: true })); // elite:エリートの印(名前・色・強さ・ドロップが変わる)
@@ -68,5 +69,6 @@ function newMonster(data, x, y, extra = {}) {
   let hp = Math.round(enemyStat(data.hp, data.hpPerDepth, "hp"));
   if (extra.elite) hp = Math.round(hp * BALANCE.eliteHpMultiplier);
   // facing:向き(最初はランダム)。hunting:プレイヤーに気づいているか(最初は気づいていない)
-  return { x, y, hp, maxHp: hp, data, energy: 0, facing: DIRS4[randInt(0, 3)], hunting: false, ...extra };
+  // calm:こちらから攻撃されるまで襲ってこない(monsters.js で aloof の敵。龍)
+  return { x, y, hp, maxHp: hp, data, energy: 0, facing: DIRS4[randInt(0, 3)], hunting: false, calm: !!data.aloof, ...extra };
 }

@@ -68,6 +68,11 @@ function makeMap() {
   flames = [];
   balls = [];
   deathBlasts = [];
+  corpses = [];
+  lightningMarks = [];
+  deathFx = [];
+  tileFx = [];
+  popups = [];
   if (eliteFloor) placeElite(stairsRoom);
   for (let i = 1; i < rooms.length - 1; i++) {
     const r = rooms[i];
@@ -77,6 +82,8 @@ function makeMap() {
     for (let k = 0; k < routeFx("monstersPerRoom", 1); k++) {
       const monsterData = Math.random() < spawnChance ? pickWeighted(monsterList, depth) : null;
       if (!monsterData) continue;
+      // 龍(onePerFloor)は、1つの階に合わせて1体まで。もういれば、この部屋には出さない
+      if (monsterData.onePerFloor && monsters.some(m => m.data.onePerFloor)) continue;
       // monsters.js の中から、この階層で出る敵を1体置く(部屋の真ん中が空いていなければ、部屋の空いているところ)
       if (!monsterAt(r.cx, r.cy)) monsters.push(newMonster(monsterData, r.cx, r.cy));
       else placeInRoom(r, monsterData);
@@ -85,10 +92,11 @@ function makeMap() {
         const count = randInt(monsterData.pack[0], monsterData.pack[1]) - 1;
         for (let n = 0; n < count; n++) placeInRoom(r, monsterData);
       }
-      // 手下(ゴブリンの族長など):escortFrom の敵から escorts 体を、同じ部屋に出す
+      // 手下(ゴブリンの族長・ドラゴンゾンビなど):escortFrom の敵から escorts 体を、同じ部屋に出す([1, 2] なら1〜2体)
       const ab = monsterData.ability;
       if (ab && ab.escorts) {
-        for (let n = 0; n < ab.escorts; n++) {
+        const escortCount = Array.isArray(ab.escorts) ? randInt(ab.escorts[0], ab.escorts[1]) : ab.escorts;
+        for (let n = 0; n < escortCount; n++) {
           const data = monsterList.find(m => m.id === ab.escortFrom[randInt(0, ab.escortFrom.length - 1)]);
           if (data) placeInRoom(r, data);
         }

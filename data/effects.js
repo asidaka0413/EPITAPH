@@ -24,6 +24,13 @@ const BLESSING_DATA = [
   { id: "poisonHit", name: "毒刃",     desc: "攻撃すると20%の確率で敵を毒にする(5ターン、毎ターン{v}ダメージ)", short: "毒刃{v}", min: 5, max: 15, scale: true },
   // 決まった装備にだけ付く効果(ランダムでは付かない)。value は 1 と書く
   { id: "blindImmune", name: "影の目", desc: "盲目にならない", short: "盲目無効", min: 1, max: 1, noRoll: true },
+  { id: "materialPlus", name: "鉱脈", desc: "敵を倒したときの素材+{v}", short: "素材+{v}", min: 1, max: 1, noRoll: true },
+  { id: "confuseImmune", name: "妖精の加護", desc: "混乱しない", short: "混乱無効", min: 1, max: 1, noRoll: true },
+  // 龍の固有装備に付く効果(その龍の属性の状態異常にならない)
+  { id: "chillImmune",  name: "凛龍の加護", desc: "凍えない",         short: "凍え無効",   min: 1, max: 1, noRoll: true },
+  { id: "shockImmune",  name: "霹龍の加護", desc: "しびれない",       short: "しびれ無効", min: 1, max: 1, noRoll: true },
+  { id: "burnImmune",   name: "焔龍の加護", desc: "やけどにならない", short: "やけど無効", min: 1, max: 1, noRoll: true },
+  { id: "poisonImmune", name: "瘴龍の加護", desc: "毒にならない",     short: "毒無効",     min: 1, max: 1, noRoll: true },
 ];
 
 const CURSE_DATA = [

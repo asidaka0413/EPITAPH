@@ -75,6 +75,12 @@ function epitaphLines(g) {
 function visitGrave() {
   const g = base.grave;
   epitaphLines(g).forEach(addLog);
+  // 演出:その階で初めて乗ったときだけ、墓がふわっと光って、小さい弔いの鐘が鳴る(js/screens.js・js/sound.js)
+  if (!graveSpot.visited) {
+    graveSpot.visited = true;
+    addTileFx(graveSpot.x, graveSpot.y, "fx-grave", 1800);
+    playSE("grave");
+  }
   if (!g.relic || g.relicTaken) return;
   g.relicTaken = true;
   addLog(`遺品を手に入れた`);

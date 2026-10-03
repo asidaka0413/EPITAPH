@@ -41,6 +41,8 @@ let townPickBook = null;   // 書を選んでいる最中の書の枠の番号(0
 let townPickTool = null;   // 持ちこむ道具を選んでいる最中の枠の番号(選んでいないときは null)
 let townAllocating = false; // スキルにポイントを振っている最中か
 let dexTab = 0;            // 図鑑で開いているタブの番号(DEX_TABS の何番目か)
+let dexEquipType = 0;      // 図鑑の装備タブで開いている種類の番号(ITEM_TYPES の何番目か。0 = 武器)
+let dexWeaponKind = null;  // 図鑑の武器で絞りこんでいるジャンル(WEAPON_KINDS の id。全部のときは null)
 let helpTab = 0;           // 遊び方で開いているタブの番号(help.js の HELP_PAGES の何番目か)
 let achieveTab = 0;        // 実績で開いているタブの番号(achievements.js の ACHIEVEMENT_TABS の何番目か)
 let craftTab = 0;          // 制作で開いているタブの番号(CRAFT_TABS の何番目か)
@@ -106,6 +108,8 @@ function newBase() {
     // 設定
     settings: {
       autoEquip: true, // 装備を拾ったとき、空いている枠があれば自動で装備する
+      se: true,        // 効果音(js/sound.js)
+      seVolume: BALANCE.seVolumeDefault, // 効果音の音量(0〜100)
       debug: false,           // デバッグモード(画面右にデバッグ用のボタンを出す)
       debugAlwaysDrop: false, // デバッグ:敵が必ず書と固有装備を落とす
       debugInvincible: false, // デバッグ:無敵(ダメージを受けない)
@@ -187,7 +191,7 @@ function loadGameData() {
       warnings.push(`⚠ sets.js:「${c.name}」の id「${c.id}」はほかの一族と同じです`);
       continue;
     }
-    const badStat = (c.sets || []).flatMap(s => Object.keys(s.stats || {})).find(key => !STAT_NAMES[key]);
+    const badStat = (c.sets || []).flatMap(s => [...Object.keys(s.stats || {}), ...Object.keys(s.statRates || {})]).find(key => !STAT_NAMES[key]);
     if (badStat) {
       warnings.push(`⚠ sets.js:「${c.name}」のセット効果の「${badStat}」というステータスはありません`);
       continue;
@@ -216,6 +220,11 @@ function loadGameData() {
       warnings.push(`⚠ monsters.js:「${m.name}」の material「${m.material}」という素材はありません`);
       continue;
     }
+    const badBonus = Object.keys(m.bonusMaterials || {}).find(id => !RESOURCE_TYPES[id]);
+    if (badBonus) {
+      warnings.push(`⚠ monsters.js:「${m.name}」の bonusMaterials「${badBonus}」という素材はありません`);
+      continue;
+    }
     const badClan = [].concat(m.clan || []).find(id => !clanList.some(c => c.id === id)); // 一族は1つ(文字)か、2つ以上(配列)
     if (badClan) {
       warnings.push(`⚠ monsters.js:「${m.name}」の clan「${badClan}」という一族はありません(sets.js の id を書いてください)`);
@@ -235,7 +244,8 @@ function loadGameData() {
   // 呼び出す敵(summonId)・連れてくる手下(escortFrom)が monsters.js にいるか(敵を全部読んでから調べる)
   for (const m of monsterList) {
     const ab = m.ability || {};
-    const bad = [ab.summonId, ...(ab.escortFrom || [])].filter(id => id).find(id => !monsterList.some(x => x.id === id));
+    const bad = [ab.summonId, ...(ab.escortFrom || []), ab.brood && ab.brood.summonId, ab.molt && ab.molt.shellId]
+      .filter(id => id).find(id => !monsterList.some(x => x.id === id));
     if (bad) warnings.push(`⚠ monsters.js:「${m.name}」の呼び出し・手下の「${bad}」という敵はいません`);
   }
 
@@ -256,6 +266,10 @@ function loadGameData() {
     }
     if (e.block !== undefined && !(e.slot === "shield" && e.block > 0 && e.block < 100)) {
       warnings.push(`⚠ equipment.js:「${e.name}」の block は盾(slot: "shield")にだけ、1〜99 の数で書いてください`);
+      continue;
+    }
+    if (e.slot === "weapon" && !WEAPON_KINDS[e.kind]) {
+      warnings.push(`⚠ equipment.js:「${e.name}」の kind「${e.kind}」というジャンルはありません(js/config.js の WEAPON_KINDS の名前を書いてください)`);
       continue;
     }
     const badFx = (e.effects || []).find(fx => !EFFECTS[fx.id]);
@@ -293,9 +307,10 @@ function bookFrom(book) {
 }
 
 // list の中から、階層 d で出るもの(minDepth〜maxDepth)を、weight(出やすさ)に応じて1つ選ぶ
+//   weight 0 のもの(瘴龍の毒蛇・抜け殻など、ふつうには出ないもの)は選ばない
 function pickWeighted(list, d) {
   const candidates = list.filter(e =>
-    d >= e.minDepth && (e.maxDepth === null || d <= e.maxDepth));
+    e.weight > 0 && d >= e.minDepth && (e.maxDepth === null || d <= e.maxDepth));
   if (candidates.length === 0) return null;
   let total = 0;
   for (const e of candidates) total += e.weight;

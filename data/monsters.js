@@ -24,6 +24,9 @@
 //                                                     shot: "毒針" と書くと、矢の代わりにその名前で出る
 //                 { type: "poison", damage: 8, damagePerDepth: 1, turns: 10 }
 //                                                  … 攻撃が当たると毒にする(毎ターン damage、turns ターン続く)
+//                                                     revive: { turns: 3, hpRate: 0.4 } と書き足すと(グール)、倒しても死体が残り、
+//                                                       プレイヤーが turns 回動くと最大HPの hpRate で一度だけ起き上がる。死体を踏むと完全に倒せる
+//                                                       経験値・ドロップは完全に倒したときだけ。エリートは起き上がらない
 //                 { type: "steal", fleeTurns: 8 }  … 攻撃が当たると回復薬を1個盗んで逃げる(倒すと取り返せる)
 //                                                     fleeTurns 回動いたら逃げるのをやめて戻ってくる(もう盗まない)
 //                 { type: "stealTool", fleeTurns: 10 } … 攻撃が当たると、持ちこんだ道具(宝の地図もふくむ)を1つ盗んで逃げる(盗賊頭)
@@ -40,6 +43,13 @@
 //                 { type: "split" }                … 攻撃されて生き残ると、HPを半分ずつに分けて2体に分裂する(1回だけ)
 //                 { type: "armored", cut: 0.5 }    … 普通の攻撃のダメージを cut だけ減らす(会心は減らせない)
 //                 { type: "regen", rate: 0.05 }    … 毎ターン、最大HPの rate ぶん回復する(毒のあいだは回復しない)
+//                                                     (ベヒーモスだけ、さらに書き足している。くわしくは js/enemyskills.js「ベヒーモスの技」)
+//                                                     rush: { range, chance, cooldown, rushPower, stunTurns } … 竜人と同じ突進
+//                                                     stomp: { chance, cooldown, radius, chargeTurns, power, staggerTurns } … となりで地響き(溜めてから)
+//                                                     knockback: { chance, distance, wallPower } … 殴ると吹き飛ばす
+//                                                     roar: { below, radius, atkUp } … 弱ると一度だけ咆哮(敵を呼ぶ・攻撃力アップ)
+//                                                     meteor: { below, turns, rocks, rockMin, rockMax, rockLimit } … 地響きで岩石 rocks 個(周り rockMin〜rockMax マス。階に rockLimit 個まで)。
+//                                                       HP が below 以下でエクリプスメテオ(turns ターン後にマップ全体へ即死。岩の陰なら助かる)
 //                 { type: "weaken", turns: 8, atkCut: 0.3 }
 //                                                  … 攻撃が当たると「衰弱」にする(turns ターン、ATK が atkCut ぶん下がる)
 //                 { type: "slow", turns: 6, aglCut: 0.4 }
@@ -56,12 +66,41 @@
 //                                                     (ドラゴンゾンビだけ、さらに書き足している)
 //                                                     absorb: { id: "ghoul", radius: 4, below: 0.7, healRate: 0.15, cooldown: 5 }
 //                                                       … HP が最大の below 未満なら、周り radius マスの id の敵を1体吸いこんで、最大HPの healRate 回復(cooldown 回の行動に1回)
+//                                                     escorts: [1, 2], escortFrom: ["ghoul"] … 部屋に出るとき、グールを1〜2体連れてくる(command と同じしくみ)
 //                                                     deathBlast: { damageMin: 150, damageMax: 200, radius: 1, delay: 1, poolRadius: 2, poolTurns: 10 }
 //                                                       … 倒されると、プレイヤーが delay 回動いたあとに死骸が爆発(周り radius マス。範囲が赤く光る)
 //                                                         そのあと周り poolRadius マスに、poolTurns ターンで消える毒沼が広がる(delay: 0 ならすぐ爆発)
+//                                                     (凛龍だけ、さらに書き足している)
+//                                                     iceFloor: { turns: 8 } … ブレスの跡が turns ターン凍った床になる(乗ると凍える。ダメージなし)
+//                                                     iceWall: { chance: 0.3, cooldown: 8, minDist: 3, turns: 10 }
+//                                                       … minDist マス以上離れていると、chance の確率でこちらの後ろに3マスの氷の壁(turns ターンで溶ける。殴ると割れる)
+//                                                     frostAura: { radius: 3, below: 0.5, turns: 2 }
+//                                                       … HP が最大の below 以下になると、周り radius マス(壁ごしは届かない)にいるだけで凍える(turns ターン)
+//                                                     (霹龍だけ、さらに書き足している)
+//                                                     ballBounces: 4 … 属性の球が壁で4回まで跳ね返る
+//                                                     lightning: { count: 8, near: 4, nearRadius: 5, power: 0.8 }
+//                                                       … 怒っているあいだ毎ターン count か所に印(near か所はこちらの周り nearRadius マス)、次のターンにそこへ落雷
+//                                                         攻撃力 × power。ほかの敵にも当たる(倒れたら、こちらが倒した扱い)
+//                                                     blink: { chance: 0.3, cooldown: 6, minDist: 3, power: 1 }
+//                                                       … minDist マス以上離れていると、chance の確率で、となりに一瞬で現れて攻撃力 × power で殴る
+//                                                     (焔龍だけ、さらに書き足している)
+//                                                     magmaBurst: { chance: 0.25, cooldown: 4, radius: 2, count: 4, turns: 6 }
+//                                                       … 怒っているあいだ、行動のたびに chance の確率で、周り radius マスの count マスにマグマ(turns ターンで消える。足元には出ない)
+//                                                     flameWings: { chance: 0.25 } … 怒っているあいだ、行動のたびに chance の確率で、もう1回動く
+//                                                     blaze: { chance: 0.3, cooldown: 6, radius: 2, power: 2.5, magmaTurns: 6 }
+//                                                       … 周り radius マス以内にいると、chance の確率で溜めて、次の行動で周り radius マスに爆炎
+//                                                         (攻撃力 × power・かわせない・やけど。範囲が赤く光る。跡は magmaTurns ターンのマグマ)
+//                                                     (瘴龍だけ、さらに書き足している)
+//                                                     fogCloud: { radius: 1, turns: 6 } … 球が当たったところ(壁・敵の手前・こちら)の周り radius マスに、turns ターン毒の霧
+//                                                     molt: { below: 0.3, healRate: 0.5, shellId: "shoryushell" }
+//                                                       … HP が最大の below 以下になると一度だけ脱皮。となりへ滑り出て最大HPの healRate 回復、元のマスに shellId の敵が残る
+//                                                     brood: { summonId: "venomsnake", chance: 0.3, cooldown: 5, maxAlive: 2, maxTotal: 4, summonVerb, summonerName }
+//                                                       … ときどき summonId の敵をとなりに産む(summon と同じしくみ。倒すと崩れ落ちる)
+//                 { type: "shell" }                … 動かない・気づかない・攻撃しない(瘴龍の抜け殻)
+//   weight 0 の敵はふつうには出ない(瘴龍が産む毒蛇・抜け殻など)
 //                 { type: "command", radius: 5, atkUp: 0.3, escorts: 2, escortFrom: ["goblin", "archer"] }
 //                                                  … 周り radius マス以内の、同じ一族の敵の攻撃力を atkUp ぶん上げる
-//                                                     部屋に出るとき、escortFrom の敵から escorts 体の手下を連れてくる
+//                                                     部屋に出るとき、escortFrom の敵から escorts 体の手下を連れてくる([1, 2] と書くと1〜2体)
 //                 { type: "summon", summonId: "skeleton", cooldown: 5, maxAlive: 2, maxTotal: 4 }
 //                                                  … cooldown 回の行動に1回、summonId の敵をとなりに呼び出す(同時に maxAlive 体、合計 maxTotal 体まで)
 //                                                     呼ばれた敵は経験値・固有装備・書を落とさず、素材だけ落とす。呼んだ敵を倒すと崩れ落ちる(素材もなし)
@@ -79,8 +118,27 @@
 //                 { type: "blind", turns: 8, erratic: 0.4 }
 //                                                  … 攻撃が当たると「盲目」にする(turns ターン、周りしか見えない。回復薬・キャンプで治る)
 //                                                     erratic を書くと、その確率でふらふらと適当な方向に飛ぶ(コウモリと同じ)
-//   pack        :(省略できる)群れで出る数 [最小, 最大]。例:pack: [2, 3] なら、同じ部屋に2〜3匹まとめて出る(エリートのときは1匹)
-//   clan        :(省略できる)一族。sets.js の id を書く("goblins" / "beasts" / "undead" / "heavy" / "dragons" / "outcasts")
+//                 { type: "burrow", turns: 5 }     … 攻撃しない。気づくと逃げ、turns 回逃げたら床に潜って消える(経験値も素材もなし。宝石虫)
+//                 { type: "spore", chance: 0.5, turns: 5 }
+//                                                  … その場から動かない(となりなら殴る)。となりで殴られて生き残ると、chance の確率で胞子をまき、
+//                                                     「混乱」にする(turns ターン、動く方向がときどきずれる。おどりキノコ)
+//                 { type: "bind", chance: 0.25, turnsMin: 1, turnsMax: 2 }
+//                                                  … 攻撃が当たると、chance の確率で「拘束」にする(turnsMin〜turnsMax ターン移動できない。
+//                                                     解けたあと BALANCE.bindGuardTurns ターンはかからない。ミイラ)
+//                 { type: "rage", below: 0.33, atkUp: 0.5, missChance: 0.25 }
+//                                                  … HP が最大の below 以下になると怒る(1回だけ)。攻撃力が atkUp ぶん上がり、
+//                                                     となりで殴るとき missChance の確率で空振りする(オーガ)
+//                 { type: "phase" }                … 壁をすり抜ける(いちばん外側の壁は出られない)。壁ごしにも気づく。
+//                                                     壁の中にいるあいだは殴れないし、殴ってもこない(となりの床に出てくる。ゴースト)
+//                 { type: "warp", chance: 0.3 }    … 攻撃しない。となりに来ると、chance の確率でプレイヤーを階のどこかへ飛ばして、自分は消える
+//                                                     (経験値も素材もなし。いたずら妖精。飛ばす先は BALANCE.fairyWarpMinDistance)
+//   noElite     :(省略できる)true ならエリートに選ばれない(潜って消える宝石虫など、階段の封印が解けなくなる敵)
+//   aloof       :(省略できる)true なら、こちらから攻撃する(殴る・巻きこむ・弓・道具)まで襲ってこない。
+//                 それまではその場でこちらをじっと見ている(見られているので不意打ちにもならない。龍)
+//   onePerFloor :(省略できる)true の敵は、1つの階に合わせて1体までしか出ない(龍)。酒場の討伐・一族討伐の依頼にも出ない
+//   bonusMaterials :(省略できる)material のほかに落とす素材。{ ore: 10 } のように書く(エリートの倍率などは material と同じ)
+//   pack       :(省略できる)群れで出る数 [最小, 最大]。例:pack: [2, 3] なら、同じ部屋に2〜3匹まとめて出る(エリートのときは1匹)
+//   clan        :(省略できる)一族。sets.js の id を書く("goblins" / "beasts" / "undead" / "heavy" / "dragons" / "elderdragons" / "outcasts")
 //                 同じ一族の固有装備から刻んだ刻印をそろえると、セット効果が付く
 //                 2つの一族を持たせるときは ["undead", "dragons"] のように書く(刻印は両方に数える。マップの色は最初の一族)
 //   desc        :(省略できる)図鑑の紹介文。詳細のいちばん下に出る。\n で改行できる
@@ -101,6 +159,19 @@ const MONSTER_DATA = [
     weight: 10, minDepth: 1, maxDepth: 20,
   },
   {
+    // 攻撃してこない。気づくと逃げて、しばらくで床に潜って消える。不意打ちか弓で仕留めると鉱石が多い
+    //   固有装備の「宝石虫の甲殻」は、とてもまれ(隠し装備)
+    id: "gemBug", name: "宝石虫", symbol: "i", color: "#60e0e0",
+    hp: 20, hpPerDepth: 3, attackMin: 0, attackMax: 0, attackPerDepth: 0, speed: 1,
+    xp: 3, xpPerDepth: 1,
+    dropChance: 0.005, bookDropChance: 0,
+    material: "ore", materialAmount: 5, // 背中に鉱石の粒がびっしり
+    ability: { type: "burrow", turns: 5 },
+    noElite: true,
+    desc: "背中に宝石のような鉱石の粒をびっしり付けた虫。\n臆病で、見つかるとすぐに逃げ出し、床に潜ってしまう。",
+    weight: 1, minDepth: 1, maxDepth: 20, // めずらしい敵(出すぎないように少なめ)
+  },
+  {
     // HPは低いが、1ターンに2回動く(逃げても追いつかれる)
     id: "rat", name: "大ネズミ", symbol: "r", color: "#c8a070", clan: "beasts",
     hp: 30, hpPerDepth: 5, attackMin: 6, attackMax: 14, attackPerDepth: 1, speed: 2,
@@ -108,6 +179,17 @@ const MONSTER_DATA = [
     dropChance: 0.05, bookDropChance: 0.01,
     material: "hide", materialAmount: 1,
     weight: 6, minDepth: 2, maxDepth: 21,
+  },
+  {
+    // その場から動かない。となりで殴ると、ときどき胞子で混乱させられる。不意打ちで一気に倒すか、弓で離れて撃つ
+    id: "danceShroom", name: "おどりキノコ", symbol: "m", color: "#e080c0",
+    hp: 45, hpPerDepth: 6, attackMin: 5, attackMax: 12, attackPerDepth: 1, speed: 1,
+    xp: 5, xpPerDepth: 1,
+    dropChance: 0.05, bookDropChance: 0.01,
+    material: "plant", materialAmount: 2,
+    ability: { type: "spore", chance: 0.5, turns: 5 },
+    desc: "傘をゆらゆら揺らして踊る、大きなキノコ。\n叩かれると、頭がくらくらする胞子をまき散らす。",
+    weight: 5, minDepth: 3, maxDepth: 22,
   },
   {
     // 速いけれど、ふらふら飛ぶのでまっすぐは来ない
@@ -118,6 +200,19 @@ const MONSTER_DATA = [
     material: "hide", materialAmount: 1,
     ability: { type: "erratic", chance: 0.5 },
     weight: 5, minDepth: 4, maxDepth: 23,
+  },
+  {
+    // 攻撃してこない。となりに来ると、ときどきこちらを階のどこかへ飛ばして消える。経験値が多いので、飛ばされる前に倒す
+    //   固有装備の「妖精の羽飾り」は、とてもまれ(隠し装備)
+    id: "pixie", name: "いたずら妖精", symbol: "l", color: "#a0f0a0",
+    hp: 30, hpPerDepth: 4, attackMin: 0, attackMax: 0, attackPerDepth: 0, speed: 1,
+    xp: 15, xpPerDepth: 3,
+    dropChance: 0.005, bookDropChance: 0,
+    material: "plant", materialAmount: 1, // 花の蜜
+    ability: { type: "warp", chance: 0.3 },
+    noElite: true,
+    desc: "羽の生えた小さないたずら好き。\n近づいてきて、くすくす笑いながら旅人をどこかへ飛ばしてしまう。",
+    weight: 1, minDepth: 5, maxDepth: 24, // めずらしい敵(出すぎないように少なめ)
   },
   {
     // 見つかると角笛で仲間を呼ぶ。先に倒すか、見つからないように
@@ -339,6 +434,39 @@ const MONSTER_DATA = [
     weight: 4, minDepth: 40, maxDepth: 59,
   },
   {
+    // 包帯で縛ってくる(拘束:しばらく移動できない)。逃げようとしても捕まるので、囲まれる前に倒す
+    id: "mummy", name: "ミイラ", symbol: "P", color: "#d8c890", clan: "undead",
+    hp: 280, hpPerDepth: 18, attackMin: 50, attackMax: 70, attackPerDepth: 3, speed: 1,
+    xp: 45, xpPerDepth: 3,
+    dropChance: 0.05, bookDropChance: 0.01,
+    material: "bone", materialAmount: 3,
+    ability: { type: "bind", chance: 0.25, turnsMin: 1, turnsMax: 2 },
+    desc: "古い墓所から這い出してきた、包帯だらけの亡骸。\nほどけた包帯を投げかけ、生者を縛りつける。",
+    weight: 4, minDepth: 42, maxDepth: 61,
+  },
+  {
+    // 壁をすり抜けて、まっすぐ来る。壁の中では殴れないが、殴ってもこない。床に出てきたところを叩く
+    id: "ghost", name: "ゴースト", symbol: "q", color: "#c0d0ff", clan: "undead",
+    hp: 220, hpPerDepth: 14, attackMin: 50, attackMax: 70, attackPerDepth: 3, speed: 1,
+    xp: 45, xpPerDepth: 3,
+    dropChance: 0.05, bookDropChance: 0.01,
+    material: "bone", materialAmount: 2,
+    ability: { type: "phase" },
+    desc: "この世に未練を残した者の、半透明の影。\n壁も扉も気にせず、まっすぐ生者のもとへ漂ってくる。",
+    weight: 4, minDepth: 48, maxDepth: 67,
+  },
+  {
+    // HPが3分の1以下になると怒り狂って、攻撃力が上がる(そのかわり、ときどき空振りする)。怒らせたら一気に倒す
+    id: "ogre", name: "オーガ", symbol: "O", color: "#c09060", clan: "heavy",
+    hp: 320, hpPerDepth: 20, attackMin: 60, attackMax: 85, attackPerDepth: 3, speed: 1,
+    xp: 50, xpPerDepth: 3,
+    dropChance: 0.05, bookDropChance: 0.01,
+    material: "hide", materialAmount: 3,
+    ability: { type: "rage", below: 0.33, atkUp: 0.5, missChance: 0.4 },
+    desc: "見上げるほどの大男。人を食らうという。\n傷を負うと怒り狂い、手がつけられなくなる。",
+    weight: 4, minDepth: 50, maxDepth: 69,
+  },
+  {
     // 噛みついた分だけ回復する。長引かせず、一気に倒したい
     id: "vampire", name: "吸血鬼", symbol: "V", color: "#b0b8ff", clan: "undead",
     hp: 260, hpPerDepth: 16, attackMin: 55, attackMax: 75, attackPerDepth: 3, speed: 1,
@@ -556,13 +684,14 @@ const MONSTER_DATA = [
     weight: 4, minDepth: 91, maxDepth: null,
   },
   {
-    // 2〜3匹の群れで出てくる屍食い。噛まれると毒
+    // 2〜3匹の群れで出てくる屍食い。噛まれると毒。倒しても一度だけ起き上がる(死体を踏めば防げる)
     id: "ghoul", name: "グール", symbol: "z", color: "#8890b8", clan: "undead",
     hp: 380, hpPerDepth: 18, attackMin: 90, attackMax: 115, attackPerDepth: 4, speed: 1,
     xp: 55, xpPerDepth: 3,
     dropChance: 0.04, bookDropChance: 0.01,
     material: "bone", materialAmount: 2,
-    ability: { type: "poison", damage: 12, damagePerDepth: 0.5, turns: 6 },
+    ability: { type: "poison", damage: 12, damagePerDepth: 0.5, turns: 6,
+               revive: { turns: 3, hpRate: 0.4 } }, // 倒すと死体が残り、3回動くと HP 40%で起き上がる
     pack: [2, 3],
     weight: 5, minDepth: 93, maxDepth: null,
   },
@@ -578,26 +707,126 @@ const MONSTER_DATA = [
   },
   {
     // とても大きな獣。毎ターン回復する。毒にすると回復が止まる
+    //   さらに、突進(竜人と同じ)・地響き(2ターン溜めて周り2マス)・吹き飛ばし・咆哮(弱ると一度だけ)
     id: "behemoth", name: "ベヒーモス", symbol: "J", color: "#a8acb4", clan: "heavy",
     hp: 900, hpPerDepth: 40, attackMin: 130, attackMax: 160, attackPerDepth: 5, speed: 1,
     xp: 120, xpPerDepth: 6,
     dropChance: 0.06, bookDropChance: 0.01,
     material: "hide", materialAmount: 6,
-    ability: { type: "regen", rate: 0.03 },
+    ability: { type: "regen", rate: 0.03,
+               rush: { range: 6, chance: 0.3, cooldown: 5, rushPower: 1.8, stunTurns: 2 },              // まっすぐ並ぶと突進
+               stomp: { chance: 0.3, cooldown: 7, radius: 2, chargeTurns: 2, power: 3, staggerTurns: 1 }, // となりで地響き(2ターン後・攻撃力×3)
+               knockback: { chance: 0.3, distance: 2, wallPower: 0.5 },                                // 殴ると2マス吹き飛ばす
+               roar: { below: 0.5, radius: 15, atkUp: 0.3 },                                           // HP半分で一度だけ咆哮
+               meteor: { below: 0.05, turns: 8, rocks: 2, rockMin: 3, rockMax: 6, rockLimit: 4 } },    // HP 5%でエクリプスメテオ(地響きで岩石2個・最大4個)
     weight: 3, minDepth: 98, maxDepth: null,
   },
   {
-    // 腐り果てた竜。毒の球とブレス。弱るとグールを吸いこんで回復し、倒すと死骸が爆発して毒沼が広がる
-    //   不死と竜の両方の一族(固有装備を刻むと、どちらのセット効果にも数える)
+    // 腐り果てた竜。グールを1〜2体連れて出る。毒の球とブレス。弱るとグールを吸いこんで回復し、倒すと死骸が爆発して毒沼が広がる
+    //   不死と竜の両方の一族(固有装備を刻むと、どちらのセット効果にも数える)。龍より格下なので、龍(90階〜)より浅い階から出る
     id: "dragonzombie", name: "ドラゴンゾンビ", symbol: "O", color: "#9cb89c", clan: ["undead", "dragons"],
-    hp: 1000, hpPerDepth: 42, attackMin: 130, attackMax: 165, attackPerDepth: 5, speed: 1,
-    xp: 130, xpPerDepth: 6,
+    hp: 850, hpPerDepth: 42, attackMin: 115, attackMax: 145, attackPerDepth: 5, speed: 1,
+    xp: 110, xpPerDepth: 6,
     dropChance: 0.06, bookDropChance: 0.01,
     material: "bone", materialAmount: 6,
     ability: { type: "dragon", element: "poison", ballCooldown: 4, breathRange: 5, breathCooldown: 7, breathChance: 0.35,
                breathPower: 1.8, dot: { damage: 16, damagePerDepth: 0.6, turns: 3 },
                absorb: { id: "ghoul", radius: 4, below: 0.7, healRate: 0.15, cooldown: 5 },
+               escorts: [1, 2], escortFrom: ["ghoul"],
                deathBlast: { damageMin: 150, damageMax: 200, radius: 1, delay: 1, poolRadius: 2, poolTurns: 10 } },
-    weight: 2, minDepth: 100, maxDepth: null,
+    weight: 2, minDepth: 88, maxDepth: null,
+  },
+
+  // ---------- 龍の一族(90階〜) ----------
+  //   竜より格上。こちらから攻撃しない限り襲ってこない(aloof)。1つの階に龍は1体まで(onePerFloor)。とても出にくい
+  //   その階ではかなり強いが、倒すと経験値・素材・固有装備が多い。数値はすべて仮
+  {
+    // 氷の龍。氷塊と凍える息を吐く(当たると凍える:こちらが遅くなる)
+    id: "rinryu", name: "凛龍", symbol: "D", color: "#d8f0ff", clan: "elderdragons",
+    hp: 4800, hpPerDepth: 200, attackMin: 240, attackMax: 300, attackPerDepth: 9, speed: 1,
+    xp: 1600, xpPerDepth: 80,
+    dropChance: 0.3, bookDropChance: 0.05,
+    material: "hide", materialAmount: 20, bonusMaterials: { ore: 20 },
+    ability: { type: "dragon", element: "ice", ballCooldown: 3, breathRange: 5, breathCooldown: 6, breathChance: 0.4,
+               breathPower: 2, dot: { turns: 3 },
+               iceFloor: { turns: 8 },                                          // ブレスの跡が8ターン凍った床になる
+               iceWall: { chance: 0.3, cooldown: 8, minDist: 3, turns: 10 },    // 3マス以上離れていると、後ろに氷の壁(10ターンで溶ける)
+               frostAura: { radius: 3, below: 0.5, turns: 2 } },                // HP 半分以下で、周り3マスに凍てつく風
+    aloof: true, onePerFloor: true, noElite: true,
+    desc: "凍てついた奥底に棲む白銀の龍。ほかの生き物を下等なものと見下していて、こちらから手を出さない限り相手にもしない。",
+    weight: 0.25, minDepth: 90, maxDepth: null,
+  },
+  {
+    // 雷の龍。跳ね返る雷球と雷のブレス(当たるとしびれる:ときどき動けない)。怒ると階じゅうに雷を落とす
+    id: "hekiryu", name: "霹龍", symbol: "D", color: "#fff2b0", clan: "elderdragons",
+    hp: 4800, hpPerDepth: 200, attackMin: 240, attackMax: 300, attackPerDepth: 9, speed: 1,
+    xp: 1600, xpPerDepth: 80,
+    dropChance: 0.3, bookDropChance: 0.05,
+    material: "hide", materialAmount: 20, bonusMaterials: { ore: 20 },
+    ability: { type: "dragon", element: "thunder", ballCooldown: 3, breathRange: 5, breathCooldown: 6, breathChance: 0.4,
+               breathPower: 2, dot: { turns: 3 },
+               ballBounces: 4,                                                      // 雷球は壁で4回まで跳ね返る
+               lightning: { count: 8, near: 4, nearRadius: 5, power: 0.8 },         // 怒っているあいだ毎ターン8か所に落雷(4か所はこちらの周り5マス)
+               blink: { chance: 0.3, cooldown: 6, minDist: 3, power: 1 } },         // 3マス以上離れていると、となりに現れてすぐ殴る
+    aloof: true, onePerFloor: true, noElite: true,
+    desc: "雷雲の奥に棲む白銀の龍。下等な生き物には目もくれないが、ひとたび怒らせれば、あたり一面に雷が降りそそぐ。",
+    weight: 0.25, minDepth: 90, maxDepth: null,
+  },
+  {
+    // 火の龍。火球と炎のブレス(やけど)。怒ると周りにマグマを噴き出し、炎の翼でときどき2回動き、近づくと爆炎
+    id: "enryu", name: "焔龍", symbol: "D", color: "#ffd0b8", clan: "elderdragons",
+    hp: 4800, hpPerDepth: 200, attackMin: 240, attackMax: 300, attackPerDepth: 9, speed: 1,
+    xp: 1600, xpPerDepth: 80,
+    dropChance: 0.3, bookDropChance: 0.05,
+    material: "hide", materialAmount: 20, bonusMaterials: { ore: 20 },
+    ability: { type: "dragon", element: "fire", ballCooldown: 3, breathRange: 5, breathCooldown: 6, breathChance: 0.4,
+               breathPower: 2, dot: { damage: 16, damagePerDepth: 0.8, turns: 4 },  // やけどはドレイクより強い
+               magmaBurst: { chance: 0.25, cooldown: 4, radius: 2, count: 4, turns: 6 }, // 周り2マスの4マスにマグマ(6ターンで消える)
+               flameWings: { chance: 0.25 },                                         // 行動のたびに25%でもう1回動く
+               blaze: { chance: 0.3, cooldown: 6, radius: 2, power: 2.5, magmaTurns: 6 } }, // 2マス以内にいると溜めて、周り2マスに爆炎
+    aloof: true, onePerFloor: true, noElite: true,
+    desc: "溶岩の底に眠る白銀の龍。下等な生き物の争いには興味を示さないが、怒りに触れたものは、大地ごと焼き尽くされる。",
+    weight: 0.25, minDepth: 90, maxDepth: null,
+  },
+  {
+    // 毒の龍(ほかの龍より少し弱い:HP・攻撃・ごほうびが8割)。毒の球の跡に霧が残り、弱ると脱皮し、毒蛇を産む
+    id: "shoryu", name: "瘴龍", symbol: "D", color: "#e4d0f4", clan: "elderdragons",
+    hp: 3800, hpPerDepth: 160, attackMin: 195, attackMax: 240, attackPerDepth: 7.5, speed: 1,
+    xp: 1280, xpPerDepth: 64,
+    dropChance: 0.3, bookDropChance: 0.05,
+    material: "hide", materialAmount: 16, bonusMaterials: { ore: 16 },
+    ability: { type: "dragon", element: "poison", ballCooldown: 3, breathRange: 5, breathCooldown: 6, breathChance: 0.4,
+               breathPower: 2, dot: { damage: 14, damagePerDepth: 0.6, turns: 4 },
+               fogCloud: { radius: 1, turns: 6 },                                  // 毒の球が当たったところの周り1マスに、6ターン毒の霧
+               molt: { below: 0.3, healRate: 0.5, shellId: "shoryushell" },        // HP 3割で一度だけ脱皮(最大HPの半分回復・抜け殻が残る)
+               brood: { summonId: "venomsnake", chance: 0.3, cooldown: 5, maxAlive: 2, maxTotal: 4,
+                        summonVerb: "産み落とした", summonerName: "瘴龍" } },     // ときどき毒蛇を産む(同時2・合計4)
+    aloof: true, onePerFloor: true, noElite: true,
+    desc: "瘴気のよどむ沼の底に棲む白銀の龍。下等な生き物を相手にしないが、触れたものは毒にむしばまれ、生まれた蛇に囲まれる。",
+    weight: 0.25, minDepth: 90, maxDepth: null,
+  },
+
+  // ---------- 瘴龍からだけ出るもの(ふつうには出ない:weight 0) ----------
+  {
+    // 瘴龍が産み落とす小さな毒蛇。倒しても素材だけ(呼び出されたもの)。瘴龍を倒すと崩れ落ちる
+    id: "venomsnake", name: "毒蛇", symbol: "s", color: "#b080d0",
+    hp: 300, hpPerDepth: 15, attackMin: 60, attackMax: 80, attackPerDepth: 3, speed: 1,
+    xp: 0, xpPerDepth: 0,
+    dropChance: 0, bookDropChance: 0,
+    material: "hide", materialAmount: 1,
+    ability: { type: "poison", damage: 10, damagePerDepth: 0.4, turns: 4 },
+    noElite: true,
+    weight: 0, minDepth: 90, maxDepth: null,
+  },
+  {
+    // 瘴龍が脱皮したあとに残る抜け殻。動かず、攻撃もしない。壊すと皮がたくさん手に入る
+    id: "shoryushell", name: "瘴龍の抜け殻", symbol: "o", color: "#a898b8",
+    hp: 300, hpPerDepth: 20, attackMin: 0, attackMax: 0, attackPerDepth: 0, speed: 1,
+    xp: 0, xpPerDepth: 0,
+    dropChance: 0, bookDropChance: 0,
+    material: "hide", materialAmount: 20,
+    ability: { type: "shell" },
+    noElite: true,
+    weight: 0, minDepth: 90, maxDepth: null,
   },
 ];

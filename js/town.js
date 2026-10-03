@@ -113,13 +113,47 @@ function craftKey(e) {
   // 1段目:種類の一覧
   const rows = CRAFT_TYPES.length;
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-    craftTab = (craftTab + (e.key === "ArrowRight" ? 1 : -1) + CRAFT_TABS.length) % CRAFT_TABS.length;
-    townCursor = 0;
+    craftClickTab(craftTab + (e.key === "ArrowRight" ? 1 : -1));
   } else if (e.key === "ArrowUp") townCursor = Math.max(0, townCursor - 1);
   else if (e.key === "ArrowDown") townCursor = Math.max(0, Math.min(rows - 1, townCursor + 1));
   else if (e.key === "Enter") craftEnter();
   else if (e.key === "Escape") { backToTownMenu(); return; }
   render();
+}
+
+// ==================== タブのクリック/タップ ====================
+// 画面のタブを押したとき、そのタブへ切り替える(←→ キーからも呼ぶ)。i:何番目のタブか(はみ出したら反対の端へ回る)
+//   タブを描くところ(townscreens.js・screens.js)で onclick="〇〇ClickTab(番号)" と書いて使う
+
+// 制作のタブ。刻印を選んでいる途中なら、選ぶのをやめる
+function craftClickTab(i) {
+  craftTab = (i + CRAFT_TABS.length) % CRAFT_TABS.length;
+  craftType = null;
+  fuseFirst = null;
+  townCursor = 0;
+  render();
+}
+
+// プレイヤーのタブ。スキルにポイントを振っている途中なら、そこで終わってセーブ
+function playerClickTab(i) {
+  if (townAllocating) { townAllocating = false; saveGame(); }
+  playerTab = (i + PLAYER_TABS.length) % PLAYER_TABS.length;
+  townCursor = 0;
+  render();
+}
+
+// 遊び方のタブ(替えたら、いちばん上から)
+function helpClickTab(i) {
+  helpTab = (i + HELP_PAGES.length) % HELP_PAGES.length;
+  render();
+  document.getElementById("screen").scrollTop = 0;
+}
+
+// 実績のタブ(替えたら、いちばん上から)
+function achieveClickTab(i) {
+  achieveTab = (i + ACHIEVEMENT_TABS.length) % ACHIEVEMENT_TABS.length;
+  render();
+  document.getElementById("screen").scrollTop = 0;
 }
 
 // 図鑑のタブ
@@ -142,11 +176,69 @@ function dexEntries(tab) {
   return bookList;
 }
 
+// 図鑑の左の一覧に今出すもの(装備タブは、開いている種類だけ)
+function dexListEntries() {
+  const tab = DEX_TABS[dexTab].id;
+  if (tab !== "equip") return dexEntries(tab);
+  const type = Object.keys(ITEM_TYPES)[dexEquipType];
+  return dexEntries("equip").filter(e => e.slot === type && (type !== "weapon" || !dexWeaponKind || e.kind === dexWeaponKind));
+}
+
+// 図鑑の武器の絞りこみを次のジャンルにする(全部 → 剣 → 短剣 → … → 全部)。F とクリック/タップから呼ぶ
+//   武器を開いていないときは何もしない。図鑑に1つも載っていないジャンルは飛ばす
+function dexCycleWeaponKind() {
+  if (DEX_TABS[dexTab].id !== "equip" || Object.keys(ITEM_TYPES)[dexEquipType] !== "weapon") return;
+  const weapons = dexEntries("equip").filter(e => e.slot === "weapon");
+  const kinds = [null, ...Object.keys(WEAPON_KINDS).filter(k => weapons.some(e => e.kind === k))];
+  dexWeaponKind = kinds[(kinds.indexOf(dexWeaponKind) + 1) % kinds.length];
+  townCursor = 0;
+  render();
+}
+
+// 図鑑の大きいタブ(敵・装備・書)を i 番目にする。←→ とクリック/タップから呼ぶ
+function dexClickTab(i) {
+  dexTab = (i + DEX_TABS.length) % DEX_TABS.length;
+  townCursor = 0;
+  render();
+}
+
+// 図鑑の装備の種類(武器・盾…)を i 番目にする。[ ] とクリック/タップから呼ぶ
+function dexClickEquipType(i) {
+  const typeCount = Object.keys(ITEM_TYPES).length;
+  dexEquipType = (i + typeCount) % typeCount;
+  townCursor = 0;
+  render();
+}
+
 // 見つけたことがあるか
 function dexFound(tab, e) {
   if (tab === "monster") return !!base.records.seen[e.id];
   if (tab === "equip") return !!base.records.equipFound[e.id];
   return !!base.records.booksFound[e.id];
+}
+
+// 図鑑の敵がどこまで分かっているか(0〜3)。倒した数が BALANCE.dexRevealKills をいくつ越えたか
+//   0:戦っただけ / 1:強さ・速さ など / 2:特徴・素材 など / 3:くわしい数字・出る階
+function dexMonsterLevel(m) {
+  const kills = base.records.kills[m.id] || 0;
+  return BALANCE.dexRevealKills.filter(n => kills >= n).length;
+}
+
+// 敵の階 d での HP・攻撃力(kind:"hp" か "attack"。攻撃力は幅のまんなか)
+//   層の段差(enemyBoost)は同じ階どうしでくらべるので入れない
+function dexStatAt(m, d, kind) {
+  if (kind === "hp") return m.hp + (m.hpPerDepth || 0) * enemySteps(d, "hp");
+  return (m.attackMin + m.attackMax) / 2 + (m.attackPerDepth || 0) * enemySteps(d, "attack");
+}
+
+// 図鑑の敵の強さの★の数(1〜5)。出始める階で、同じ階に出るほかの敵の平均とくらべる
+//   攻撃しない敵(宝石虫など)は攻撃の平均に入れない
+function dexStars(m, kind) {
+  const d = m.minDepth;
+  const others = monsterList.filter(x => x.minDepth <= d && (x.maxDepth === null || x.maxDepth >= d) && (kind === "hp" || x.attackMax > 0));
+  const avg = others.reduce((sum, x) => sum + dexStatAt(x, d, kind), 0) / others.length;
+  const ratio = dexStatAt(m, d, kind) / avg;
+  return 1 + BALANCE.dexStarRatios.filter(r => ratio >= r).length;
 }
 
 // 見つけた数
@@ -161,6 +253,7 @@ const PLAYER_TABS = [
   { id: "trait",    name: "特性",       hasNew: () => false },
   { id: "tools",    name: "道具",       hasNew: () => false }, // 冒険に持ちこむ道具(js/shop.js)
   { id: "material", name: "刻印",       hasNew: () => base.materials.some(mat => mat.isNew) },
+  { id: "clan",     name: "一族",       hasNew: () => false }, // 一族のセット効果(見るだけ)
   { id: "book",     name: "書",         hasNew: () => Object.keys(base.bookNew).length > 0 },
   { id: "skill",    name: "スキル",     hasNew: () => false },
 ];
@@ -172,7 +265,7 @@ function playerTabRows() {
   if (tab === "book") return BALANCE.bookSlots + bookRecipes().length; // 書の枠のあとに、書の交換のレシピ
   if (tab === "skill") return setBooks().length;
   if (tab === "tools") return base.shop.built ? BALANCE.carrySlots : 0;
-  return 0; // ステータス・特性は見るだけ
+  return 0; // ステータス・特性・一族は見るだけ
 }
 
 // 持っている書の一覧(系統・レベルの順)
@@ -256,10 +349,18 @@ function exchangeBook(recipe) {
 
 // 拠点の設定画面の項目。name:表示名 / value:右側に出す今の状態 / apply:Enter を押したときの処理
 //   shown:(省略できる)false を返すときは一覧に出さない
+//   adjust:(省略できる)←→ を押したときの処理(d:← なら -1 / → なら +1)
 const TOWN_SETTINGS = [
   { name: "拾ったとき、空いている枠に自動で装備",
     value: () => base.settings.autoEquip ? span("up", "ON") : span("dim", "OFF"),
     apply: () => toggleAutoEquip() },
+  { name: "効果音",
+    value: () => seEnabled() ? span("up", "ON") : span("dim", "OFF"),
+    apply: () => toggleSE() },
+  { name: "効果音の音量",
+    value: () => `${base.settings.seVolume} ${span("dim", "(←→ で変える)")}`,
+    apply: () => cycleSEVolume(), // Enter は上げていき、100 の次は 0 に戻る
+    adjust: d => changeSEVolume(d) },
   { name: "デバッグモード",
     shown: () => DEBUG_ALLOWED, // アドレスに ?debug を付けて開いたときだけ(js/debug.js)
     value: () => base.settings.debug ? `${span("up", "ON")} ${span("dim", "(実績は取れない)")}` : span("dim", "OFF"),
@@ -348,11 +449,10 @@ function townKey(e) {
   }
 
   if (townPage === "dex") {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      dexTab = (dexTab + (e.key === "ArrowRight" ? 1 : -1) + DEX_TABS.length) % DEX_TABS.length;
-      townCursor = 0;
-    } else if (e.key === "ArrowUp") townCursor = Math.max(0, townCursor - 1);
-    else if (e.key === "ArrowDown") townCursor = Math.min(dexEntries(DEX_TABS[dexTab].id).length - 1, townCursor + 1);
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { dexClickTab(dexTab + (e.key === "ArrowRight" ? 1 : -1)); return; }
+    if ((e.key === "[" || e.key === "]") && DEX_TABS[dexTab].id === "equip") { dexClickEquipType(dexEquipType + (e.key === "]" ? 1 : -1)); return; }
+    if (e.key === "ArrowUp") townCursor = Math.max(0, townCursor - 1);
+    else if (e.key === "ArrowDown") townCursor = Math.min(dexListEntries().length - 1, townCursor + 1);
     else if (e.key === "Escape") { backToTownMenu(); return; }
     render();
     return;
@@ -381,11 +481,8 @@ function townKey(e) {
   // 実績:←→ でタブ、↑↓ で一覧をスクロール
   if (townPage === "achieve") {
     const screenEl = document.getElementById("screen");
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      achieveTab = (achieveTab + (e.key === "ArrowRight" ? 1 : -1) + ACHIEVEMENT_TABS.length) % ACHIEVEMENT_TABS.length;
-      render();
-      screenEl.scrollTop = 0; // タブを替えたら、いちばん上から
-    } else if (e.key === "ArrowUp") screenEl.scrollTop -= 60;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") achieveClickTab(achieveTab + (e.key === "ArrowRight" ? 1 : -1));
+    else if (e.key === "ArrowUp") screenEl.scrollTop -= 60;
     else if (e.key === "ArrowDown") screenEl.scrollTop += 60;
     else if (e.key === "Escape") backToTownMenu();
     return;
@@ -394,11 +491,8 @@ function townKey(e) {
   // 遊び方:←→ でタブ、↑↓ で説明をスクロール
   if (townPage === "help") {
     const screenEl = document.getElementById("screen");
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      helpTab = (helpTab + (e.key === "ArrowRight" ? 1 : -1) + HELP_PAGES.length) % HELP_PAGES.length;
-      render();
-      screenEl.scrollTop = 0; // タブを替えたら、いちばん上から
-    } else if (e.key === "ArrowUp") screenEl.scrollTop -= 60;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") helpClickTab(helpTab + (e.key === "ArrowRight" ? 1 : -1));
+    else if (e.key === "ArrowUp") screenEl.scrollTop -= 60;
     else if (e.key === "ArrowDown") screenEl.scrollTop += 60;
     else if (e.key === "Escape") backToTownMenu();
     return;
@@ -408,6 +502,9 @@ function townKey(e) {
     if (e.key === "ArrowUp") townCursor = Math.max(0, townCursor - 1);
     else if (e.key === "ArrowDown") townCursor = Math.min(townSettings().length - 1, townCursor + 1);
     else if (e.key === "Enter") townSettings()[townCursor].apply();
+    else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && townSettings()[townCursor].adjust) {
+      townSettings()[townCursor].adjust(e.key === "ArrowLeft" ? -1 : 1);
+    }
     else if (e.key === "Escape") { backToTownMenu(); return; }
     render();
     return;
@@ -466,8 +563,8 @@ function playerKey(e) {
   // タブの一覧
   const tab = PLAYER_TABS[playerTab].id;
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-    playerTab = (playerTab + (e.key === "ArrowRight" ? 1 : -1) + PLAYER_TABS.length) % PLAYER_TABS.length;
-    townCursor = 0;
+    playerClickTab(playerTab + (e.key === "ArrowRight" ? 1 : -1));
+    return;
   } else if (e.key === "ArrowUp") {
     townCursor = Math.max(0, townCursor - 1);
   } else if (e.key === "ArrowDown") {

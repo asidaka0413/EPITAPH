@@ -52,7 +52,7 @@ function drawTownPlayer() {
   h += `<div class="tabs">`;
   PLAYER_TABS.forEach((tab, i) => {
     const newMark = tab.hasNew() ? newBadge() : "";
-    h += `<span class="tab${i === playerTab ? " active" : ""}">${esc(tab.name)}${newMark}</span>`;
+    h += `<span class="tab clickable${i === playerTab ? " active" : ""}" onclick="playerClickTab(${i})">${esc(tab.name)}${newMark}</span>`;
   });
   h += `</div>`;
 
@@ -60,6 +60,7 @@ function drawTownPlayer() {
   if (tab === "status") h += statusPageHTML({}) + `<div class="note">拠点では装備を着けていない状態の値。装備は冒険中に拾う</div>`;
   else if (tab === "trait") h += traitPageHTML({});
   else if (tab === "material") h += playerMaterialHTML();
+  else if (tab === "clan") h += playerClanHTML();
   else if (tab === "book") h += playerBookHTML();
   else if (tab === "tools") h += playerToolsHTML();
   else h += playerSkillHTML();
@@ -138,7 +139,7 @@ function traitPageHTML(eqMap = equipped) {
     for (const fx of idle) h += gridRow(false, "10em 1fr", [span("dim", EFFECTS[fx.id].name), span("dim", effectText(fx, false).replace(/^.*?:/, ""))]);
     h += `<div class="list-gap"></div>`;
   }
-  // 一族のセット効果(冒険中だけ。拠点ではプレイヤー画面の「刻印」タブに出す)
+  // 一族のセット効果(冒険中だけ。拠点ではプレイヤー画面の「一族」タブに出す)
   if (inRunScreen()) {
     h += `<div class="list-title"><b>一族のセット効果</b></div>${clanSetHTML(eqMap, true)}<div class="list-gap"></div>`;
   }
@@ -182,9 +183,13 @@ function playerMaterialHTML() {
       `${mat ? materialMarks(mat) + materialStatsHTML(mat) : span("dim", "―")}${newMark}`,
     ]);
   });
-  // 一族のセット効果(拠点では装備を着けていないので、セットしている刻印を全部数える)
-  h += `<div class="list-gap"></div><div class="list-title"><b>一族のセット効果</b></div>`;
-  h += `<div class="note">同じ一族の固有装備から刻んだ刻印をそろえると付く。ここではセット中の刻印を全部数えている。ダンジョンでは、装備を着けている枠の刻印だけ数える</div>`;
+  h += `<div class="list-gap"></div><div class="note">一族のセット効果は、となりの「一族」タブで確かめられる</div>`;
+  return h;
+}
+
+// プレイヤー画面の「一族」タブ:一族のセット効果(拠点では装備を着けていないので、セットしている刻印を全部数える)
+function playerClanHTML() {
+  let h = `<div class="note">同じ一族の固有装備から刻んだ刻印をそろえると付く。ここではセット中の刻印を全部数えている。ダンジョンでは、装備を着けている枠の刻印だけ数える</div>`;
   h += clanSetHTML({}, false);
   return h;
 }
@@ -299,7 +304,7 @@ function drawTownCraft() {
   let h = `<div><b>素材</b>　${resourcesHTML(base.resources)}</div>`;
   h += `<div class="tabs">`;
   CRAFT_TABS.forEach((tab, i) => {
-    h += `<span class="tab${i === craftTab ? " active" : ""}">${esc(tab.name)}</span>`;
+    h += `<span class="tab clickable${i === craftTab ? " active" : ""}" onclick="craftClickTab(${i})">${esc(tab.name)}</span>`;
   });
   h += `</div>`;
 
@@ -482,7 +487,7 @@ function bookExchangeHTML() {
 function drawTownHelp() {
   let h = `<div class="tabs">`;
   HELP_PAGES.forEach((page, i) => {
-    h += `<span class="tab${i === helpTab ? " active" : ""}">${esc(page.title)}</span>`;
+    h += `<span class="tab clickable${i === helpTab ? " active" : ""}" onclick="helpClickTab(${i})">${esc(page.title)}</span>`;
   });
   h += `</div>`;
   for (const sec of HELP_PAGES[helpTab].sections) {
@@ -500,7 +505,7 @@ function drawTownAchieve() {
   ACHIEVEMENT_TABS.forEach((tab, i) => {
     const list = achievementList.filter(a => a.tab === tab.id);
     const got = list.filter(a => base.achievements[a.id]).length;
-    h += `<span class="tab${i === achieveTab ? " active" : ""}">${esc(tab.name)} ${span("dim", `${got}/${list.length}`)}</span>`;
+    h += `<span class="tab clickable${i === achieveTab ? " active" : ""}" onclick="achieveClickTab(${i})">${esc(tab.name)} ${span("dim", `${got}/${list.length}`)}</span>`;
   });
   h += `</div>`;
 
@@ -536,7 +541,7 @@ function drawTownSettings() {
   });
   h += `<div class="list-gap"></div><div class="note">${lastSavedAt ? `最終セーブ ${lastSavedAt.toLocaleString()}` : "まだセーブしていません"}</div>`;
   setScreen("拠点 - 設定", h, false);
-  setHint([["↑↓", "選ぶ"], ["Enter / Space", "切り替え / 実行"], ["Esc / Q", "戻る"]]);
+  setHint([["↑↓", "選ぶ"], ["Enter / Space", "切り替え / 実行"], ["←→", "音量"], ["Esc / Q", "戻る"]]);
 }
 
 // 拠点:図鑑(タブ:敵・装備・書)
@@ -544,18 +549,38 @@ function drawTownDex() {
   // タブの見出し(発見数つき)
   let h = `<div class="tabs">`;
   DEX_TABS.forEach((tab, i) => {
-    h += `<span class="tab${i === dexTab ? " active" : ""}">${esc(tab.name)} ${span("dim", `${dexCount(tab.id)}/${dexEntries(tab.id).length}`)}</span>`;
+    h += `<span class="tab clickable${i === dexTab ? " active" : ""}" onclick="dexClickTab(${i})">${esc(tab.name)} ${span("dim", `${dexCount(tab.id)}/${dexEntries(tab.id).length}`)}</span>`;
   });
   h += `</div>`;
 
-  // 左に一覧、右に選んでいるものの詳しい情報
+  // 装備タブは、その下に種類(武器・盾・頭…)の小さいタブ(発見数つき)
   const tab = DEX_TABS[dexTab].id;
-  const entries = dexEntries(tab);
+  if (tab === "equip") {
+    h += `<div class="tabs sub-tabs">`;
+    Object.keys(ITEM_TYPES).forEach((type, i) => {
+      const all = dexEntries("equip").filter(e => e.slot === type);
+      const found = all.filter(e => dexFound("equip", e)).length;
+      h += `<span class="tab clickable${i === dexEquipType ? " active" : ""}" onclick="dexClickEquipType(${i})">${esc(ITEM_TYPES[type].name)} ${span("dim", `${found}/${all.length}`)}</span>`;
+    });
+    h += `</div>`;
+  }
+
+  // 武器を開いているときは、ジャンルの絞りこみの行(押すと次のジャンルへ)
+  const isWeapon = tab === "equip" && Object.keys(ITEM_TYPES)[dexEquipType] === "weapon";
+  if (isWeapon) {
+    const weapons = dexEntries("equip").filter(e => e.slot === "weapon" && (!dexWeaponKind || e.kind === dexWeaponKind));
+    const found = weapons.filter(e => dexFound("equip", e)).length;
+    const kindName = dexWeaponKind ? WEAPON_KINDS[dexWeaponKind].name : "全部";
+    h += `<div class="dex-filter clickable" onclick="dexCycleWeaponKind()">ジャンル:<b>${esc(kindName)}</b> ${span("dim", `${found}/${weapons.length}　(F か、ここを押すと次のジャンル)`)}</div>`;
+  }
+
+  // 左に一覧、右に選んでいるものの詳しい情報
+  const entries = dexListEntries();
   let list = "";
   entries.forEach((e, i) => {
     const found = dexFound(tab, e);
-    // 見つけていない装備は、種類(頭・胴など)だけヒントに出す
-    const hint = tab === "equip" ? span("dim", ` [${ITEM_TYPES[e.slot].name}]`) : "";
+    // 見つけていない武器は、ジャンル(剣・槍など)だけヒントに出す(ジャンルで絞りこんでいるときは出さない)
+    const hint = tab === "equip" && e.kind && !dexWeaponKind ? span("dim", ` [${WEAPON_KINDS[e.kind].name}]`) : "";
     list += listRow(i === townCursor, found ? esc(e.name) : span("dim", "？？？") + hint);
   });
   const sel = entries[townCursor];
@@ -563,7 +588,8 @@ function drawTownDex() {
   h += `<div class="dex"><div class="dex-list">${list}</div><div class="dex-detail">${detail}</div></div>`;
 
   setScreen("拠点 - 図鑑", h, false);
-  setHint([["←→", "タブ"], ["↑↓", "選ぶ"], ["Esc / Q", "戻る"]]);
+  const typeHint = tab === "equip" ? [["[ ]", "装備の種類"], ...(isWeapon ? [["F", "ジャンル"]] : [])] : [];
+  setHint([["←→", "タブ"], ...typeHint, ["↑↓", "選ぶ"], ["Esc / Q", "戻る"]]);
 }
 
 // 図鑑の詳しい情報
@@ -573,35 +599,63 @@ function dexDetailHTML(tab, e) {
   let h = "";
 
   if (tab === "monster") {
+    // 倒した数で、分かることが増える(BALANCE.dexRevealKills。town.js の dexMonsterLevel)
+    const level = dexMonsterLevel(e);
+    const kills = base.records.kills[e.id] || 0;
+    const stars = n => `${"★".repeat(n)}${span("dim", "☆".repeat(5 - n))}`;
     h += `<div class="dex-name"><span style="color:${monsterColor(e)}">${esc(e.symbol)}</span> ${esc(e.name)}</div>`;
-    h += row("出る階", depthText(e));
-    h += row("一族", monsterClans(e).length ? monsterClans(e).map(clanNameHTML).join("・") : span("dim", "なし"));
-    h += row("HP", `${e.hp} ${span("dim", `(1階ごとに+${e.hpPerDepth})`)}`);
-    h += row("攻撃", `${e.attackMin}〜${e.attackMax} ${span("dim", `(1階ごとに+${e.attackPerDepth || 0})`)}`);
-    h += row("", span("dim", `地下${BALANCE.enemySteepFromFloor}階からは、1階ごとの上がり幅が HP×${BALANCE.enemySteepHp}・攻撃×${BALANCE.enemySteepAttack}。深い層ほど、さらに強くなる`));
-    h += row("速さ", speedText(e.speed));
-    if (e.ability) h += row("特徴", MONSTER_ABILITIES[e.ability.type](e.ability));
-    if (e.pack) h += row("群れ", `${e.pack[0]}〜${e.pack[1]}匹の群れで出てくる`);
-    if (e.material) h += row("素材", `${RESOURCE_TYPES[e.material].name} ×${e.materialAmount || 1}`);
-    h += row("倒した数", `${base.records.kills[e.id] || 0}体`);
-    const drops = equipmentList.filter(x => x.from === e.id && (!x.hidden || base.records.equipFound[x.id])) // 隠し装備は拾うまで出さない
-      .map(x => base.records.equipFound[x.id] ? esc(x.name) : span("dim", "？？？"));
-    h += row("固有装備", drops.length ? drops.join("、") : span("dim", "なし"));
+    h += row("倒した数", `${kills}体`);
+    // 1体:強さ(★)・速さ・群れ・一族
+    if (level >= 1) {
+      h += row("一族", monsterClans(e).length ? monsterClans(e).map(clanNameHTML).join("・") : span("dim", "なし"));
+      h += row("HP", stars(dexStars(e, "hp")));
+      h += row("攻撃", e.attackMax > 0 ? stars(dexStars(e, "attack")) : span("dim", "攻撃してこない"));
+      h += row("速さ", speedText(e.speed));
+      if (e.pack) h += row("群れ", level >= 3 ? `${e.pack[0]}〜${e.pack[1]}匹の群れで出てくる` : "群れで出てくる");
+    }
+    // 5体:特徴・素材・固有装備
+    if (level >= 2) {
+      if (e.ability) h += row("特徴", MONSTER_ABILITIES[e.ability.type](e.ability));
+      if (e.material) h += row("素材", `${RESOURCE_TYPES[e.material].name} ×${e.materialAmount || 1}`);
+      const drops = equipmentList.filter(x => x.from === e.id && (!x.hidden || base.records.equipFound[x.id])) // 隠し装備は拾うまで出さない
+        .map(x => base.records.equipFound[x.id] ? esc(x.name) : span("dim", "？？？"));
+      h += row("固有装備", drops.length ? drops.join("、") : span("dim", "なし"));
+    }
+    // 20体:くわしい数字(出始める階での値)・出る階
+    if (level >= 3) {
+      const d = e.minDepth;
+      const boost = layerOf(d).enemyBoost;
+      const atkStep = (e.attackPerDepth || 0) * enemySteps(d, "attack");
+      const hp = Math.round((e.hp + (e.hpPerDepth || 0) * enemySteps(d, "hp")) * boost);
+      const atk = `${Math.round((e.attackMin + atkStep) * boost)}〜${Math.round((e.attackMax + atkStep) * boost)}`;
+      h += row("くわしく", `地下${d}階で HP ${hp}・攻撃 ${atk} ${span("dim", "(深い階ほど強くなる)")}`);
+      h += row("出る階", depthText(e));
+    }
+    // 次の段階まであと何体か
+    if (level < BALANCE.dexRevealKills.length) {
+      h += `<div class="dim" style="margin-top:6px">あと${BALANCE.dexRevealKills[level] - kills}体倒すと、もっと分かる</div>`;
+    }
   } else if (tab === "equip") {
+    // 「性能」「手に入れ方」「刻むと」の3つのまとまりに分けて、見出しを付ける
+    const section = title => `<div class="dex-section">${title}</div>`;
     h += `<div class="dex-name">${span(ITEM_TYPES[e.slot].cls, ITEM_TYPES[e.slot].symbol)} ${esc(e.name)}</div>`;
+    h += section("性能");
     h += row("種類", ITEM_TYPES[e.slot].name);
+    if (e.kind) h += row("ジャンル", `${weaponKindBadgeHTML(e.kind)} ${span("dim", `(同じジャンルの武器の刻印は、この武器を着けていると +${Math.round(BALANCE.weaponKindBonus * 100)}%)`)}`);
     h += row("ステータス", `${statsHTML(e.stats)} ${span("dim", "(1〜5階)")}`);
     if (e.block) h += row("防ぐ", `向いている方向から飛んでくる矢・炎・属性の球のダメージ -${e.block}%`);
     if (e.effects && e.effects.length) h += row("効果", effectsHTML(e.effects, false));
     const m = monsterList.find(x => x.id === e.from);
     const from = e.from === "field" ? "床に落ちている"
       : base.records.seen[e.from] ? `${esc(m.name)}が落とす` : `${span("dim", "？？？")}が落とす`;
-    h += row("手に入る場所", from);
+    h += section("手に入れ方");
+    h += row("場所", from);
     h += row("出る階", depthText(e));
     h += row("拾った回数", `${base.records.equipFound[e.id]}回`);
-    if (e.materialName) h += row("刻むと", `刻印「${span("mat-name", e.materialName)}」になる`);
     const clans = equipmentClans(e);
-    if (clans.length) h += row("一族", `${clans.map(clanNameHTML).join("・")} ${span("dim", `(刻むと、${clans.length > 1 ? "どちらの" : "この"}一族のセット効果にも数えられる)`)}`);
+    if (e.materialName || clans.length) h += section("刻むと");
+    if (e.materialName) h += row("刻印", `「${span("mat-name", e.materialName)}」になる`);
+    if (clans.length) h += row("一族", `${clans.map(clanNameHTML).join("・")} ${span("dim", `(${clans.length > 1 ? "どちらの" : "この"}一族のセット効果にも数えられる)`)}`);
   } else {
     h += `<div class="dex-name">${span("book", "?")} ${esc(e.name)}</div>`;
     h += row("上がる", `${STAT_NAMES[e.stat]}(1段階 +${e.perTier})`);

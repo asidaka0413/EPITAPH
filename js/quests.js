@@ -17,7 +17,7 @@ const QUEST_TYPES = {
   kill: {
     name: "討伐", weight: 4,
     make(d, big) {
-      const data = pickWeighted(monsterList, d);
+      const data = pickWeighted(monsterList.filter(m => !m.onePerFloor), d); // 1つの階に1体しか出ない龍は、何体も倒せないので出さない
       if (!data) return null;
       const count = Math.round(randInt(3, 8) * (big ? BALANCE.questBigCount : 1));
       return { monsterId: data.id, depth: d, count, progress: 0, reward: questGold(BALANCE.questGold.kill * count, d) };
@@ -32,8 +32,8 @@ const QUEST_TYPES = {
   clanKill: {
     name: "一族討伐", weight: 2,
     make(d, big) {
-      // その階のあたりに出る敵がいる一族から選ぶ
-      const clans = clanList.filter(c => monsterList.some(m => monsterClans(m).includes(c) && d >= m.minDepth && (m.maxDepth === null || d <= m.maxDepth)));
+      // その階のあたりに出る敵がいる一族から選ぶ(1つの階に1体しか出ない龍だけの一族は、何体も倒せないので出さない)
+      const clans = clanList.filter(c => monsterList.some(m => !m.onePerFloor && monsterClans(m).includes(c) && d >= m.minDepth && (m.maxDepth === null || d <= m.maxDepth)));
       if (clans.length === 0) return null;
       const clan = clans[randInt(0, clans.length - 1)];
       const count = Math.round(randInt(5, 10) * (big ? BALANCE.questBigCount : 1));

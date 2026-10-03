@@ -44,6 +44,11 @@ function resetPlayerStats() {
   playerWeak = null;
   playerSlow = null;
   playerBlind = null;
+  playerConfused = null;
+  playerBound = null;
+  playerBindGuard = 0;
+  playerAilments = {};
+  playerStagger = 0;
   facing = null;
 }
 
@@ -66,8 +71,10 @@ function drawLog() {
   for (const line of logLines) {
     const div = document.createElement("div");
     div.textContent = line.text;
-    // 今のターンの出来事は黄色、それより前は灰色
+    // 今のターンの出来事は黄色、それより前は灰色。会心・レベルアップは金色、痛恨は赤(今のターンだけ)
     div.className = line.turn === turn ? "log-new" : "log-old";
+    if (/会心の一撃|レベルアップ/.test(line.text)) div.className += " log-crit";
+    else if (/痛恨の一撃/.test(line.text)) div.className += " log-ouch";
     el.appendChild(div);
   }
   el.scrollTop = el.scrollHeight; // いちばん下(最新)までスクロール

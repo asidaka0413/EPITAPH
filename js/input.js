@@ -68,20 +68,27 @@ document.addEventListener("keydown", (e) => {
 // キーが押されたとき(キーボードでも、スマホの操作ボタン(js/touch.js)でも、ここを通る)
 //   key:KEY_ALIASES で置き換えたあとのキー / repeat:押しっぱなしの繰り返しなら true
 function pressKey(key, repeat) {
+  if (playerDying) return; // 自分が砕け散っているあいだは、何もしない
+  if (refineFinishing) return; // 最後に刻んだ光を見せているあいだも、何もしない(js/items.js)
   // 押しっぱなしの Enter / Space は無視する(分かれ道 → キャンプ、リザルト → 刻む が勝手に決まらないように)
   if (repeat && key === "Enter") return;
   // 分かれ道・キャンプ・宝の地図の入れ替えでは、押しっぱなしの矢印も無視する(移動キーを押したまま階段に乗ったとき、選んでいる道が動かないように)
   if (repeat && ["route", "camp", "swap"].includes(screenMode) && key.startsWith("Arrow")) return;
+  // 弓:押しっぱなしの R・狙っているあいだの押しっぱなしは無視する(移動キーを押したまま R を押して、勝手に撃たないように)
+  if (repeat && (key === "r" || key === "R" || bowAiming)) return;
   // X を押し始めたら自害のカウント開始(押しっぱなしの繰り返しは無視)
   if (key === "x" || key === "X") {
     if (!repeat) startGiveUp();
     return;
   }
   // F で、敵の視界と攻撃範囲の表示を切り替える(ダンジョンだけ。押しっぱなしの繰り返しは無視)
+  //   拠点の図鑑では、武器のジャンルの絞りこみ(js/town.js の dexCycleWeaponKind)
   if (key === "f" || key === "F") {
     if (!repeat && screenMode === "dungeon") {
       threatView = !threatView;
       render();
+    } else if (!repeat && screenMode === "town" && townPage === "dex") {
+      dexCycleWeaponKind();
     }
     return;
   }
@@ -109,6 +116,12 @@ function isWaitKey(key) {
 
 // キー操作の本体(key は KEY_ALIASES で置き換えたあとのキー)
 function handleKey(e) {
+  // デバッグのサウンドテスト(js/debug.js)
+  if (screenMode === "soundtest") {
+    soundTestKey(e);
+    return;
+  }
+
   if (screenMode === "town") {
     townKey(e);
     return;
@@ -228,6 +241,18 @@ function handleKey(e) {
     } else if (e.key === "i" || e.key === "I") {
       openInventory();
     }
+    return;
+  }
+
+  // 弓で狙っているあいだ:方向キーで撃つ。ほかのキーならやめる(js/combat.js)
+  if (bowAiming) {
+    handleBowAim(e.key);
+    return;
+  }
+
+  // R で弓を狙う
+  if (e.key === "r" || e.key === "R") {
+    startBowAim();
     return;
   }
 

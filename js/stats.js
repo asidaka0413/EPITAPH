@@ -32,9 +32,12 @@ function statSources(eqMap = equipped) {
     addCurses(src.equip, eqMap[slot].effects);
   }
   for (const slot in base.materialSet) {
+    const mat = base.materialSet[slot];
     const to = eqMap[slot] ? src.material : src.materialIdle;
-    for (const key in base.materialSet[slot].stats) to[key] += base.materialSet[slot].stats[key];
-    addCurses(to, base.materialSet[slot].effects);
+    // 武器の刻印は、着けている武器と同じジャンルなら数値が増える
+    const rate = materialKindMatch(mat, eqMap) ? 1 + BALANCE.weaponKindBonus : 1;
+    for (const key in mat.stats) to[key] += rate === 1 ? mat.stats[key] : Math.round(mat.stats[key] * rate);
+    addCurses(to, mat.effects);
   }
   // セットしている書のスキル(振ったポイントに応じた分)
   for (const book of setBooks()) {
@@ -46,7 +49,43 @@ function statSources(eqMap = equipped) {
   for (const set of activeSets(eqMap)) {
     for (const key in set.stats || {}) src.trait[key] += set.stats[key];
   }
+  // 割合で上がるセット効果(龍の ATK+10% など)は、ほかの全部を足したあとの数値にかける
+  for (const set of activeSets(eqMap)) {
+    for (const key in set.statRates || {}) {
+      const total = src.base[key] + src.equip[key] + src.material[key] + src.book[key] + src.trait[key];
+      src.trait[key] += Math.round(total * set.statRates[key]);
+    }
+  }
   return src;
+}
+
+// ==================== 武器のジャンル ====================
+// 装備(床の装備・データのどちらでも)の武器のジャンル(WEAPON_KINDS の id)。武器でない・鍛冶屋の武器なら null
+function weaponKindOf(eq) {
+  const data = eq && equipmentList.find(e => e.id === eq.id);
+  return data && data.kind ? data.kind : null;
+}
+
+// 武器の刻印のジャンルの一覧(元の装備から決める。合成した刻印は2つ持つことがある)
+function materialKinds(mat) {
+  if (mat.slot !== "weapon") return [];
+  const kinds = [];
+  for (const id of mat.sources || []) {
+    const kind = weaponKindOf({ id });
+    if (kind && !kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds;
+}
+
+// 武器の刻印が、着けている武器と同じジャンルか(合成した刻印は、どちらかが同じならよい)
+function materialKindMatch(mat, eqMap = equipped) {
+  const kind = weaponKindOf(eqMap.weapon);
+  return !!kind && materialKinds(mat).includes(kind);
+}
+
+// ジャンルの札(例:[槍])。match:着けている武器と同じジャンルなら true(色が変わる)
+function weaponKindBadgeHTML(kind, match = false) {
+  return `<span class="kind-tag${match ? " match" : ""}">${esc(WEAPON_KINDS[kind].name)}</span>`;
 }
 
 // ==================== 一族のセット効果 ====================

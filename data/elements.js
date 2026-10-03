@@ -15,9 +15,12 @@ const DAMAGE_CATEGORIES = {
   terrain:   "地形",       // 毒沼・マグマなどのダメージ床
 };
 
-// 属性。id → { name:表示名, color:表示の色, ballName:属性の球の名前, dot:当たったときの状態異常(js/ailments.js の DOT_TYPES の id) }
-//   氷・雷などは、「龍」の一族を作るときに足す予定(状態異常も一緒に DOT_TYPES に足す)
+// 属性。id → { name:表示名, color:表示の色, ballName:属性の球の名前, dot:当たったときの継続ダメージ(js/ailments.js の DOT_TYPES の id),
+//               ailment:当たったときの、ダメージのない状態異常(js/ailments.js の AILMENT_TYPES の id) }
+//   dot と ailment はどちらか一方を書く
 const ELEMENT_DATA = {
-  fire:   { name: "火", color: "#ff7a40", ballName: "火球",   dot: "burn" },
-  poison: { name: "毒", color: "#c070e0", ballName: "毒の球", dot: "poison" },
+  fire:    { name: "火", color: "#ff7a40", ballName: "火球",   dot: "burn" },
+  poison:  { name: "毒", color: "#c070e0", ballName: "毒の球", dot: "poison" },
+  ice:     { name: "氷", color: "#8fd8ff", ballName: "氷塊",   ailment: "chill" },
+  thunder: { name: "雷", color: "#ffe14a", ballName: "雷球",   ailment: "shock" },
 };

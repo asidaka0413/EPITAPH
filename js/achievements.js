@@ -96,16 +96,17 @@ function achievementMet(a) {
 //   デバッグモードが効いているあいだは取れない(js/debug.js の debugOn。OFF に戻せばまた取れる)
 function checkAchievements() {
   if (debugOn()) return;
-  let got = false;
+  const got = [];
   for (const a of achievementList) {
     if (base.achievements[a.id] || !achievementMet(a)) continue;
     base.achievements[a.id] = new Date().toISOString().slice(0, 10); // 「2026-10-02」の形
     addLog(`★ 実績「${a.name}」を達成した！`);
-    got = true;
+    got.push(a.name);
   }
-  if (got) {
+  if (got.length > 0) {
     saveGame();
     render(); // 拠点のメニューの「達成 〇/〇」も描き直す
+    showAchievementToast(got); // 演出:画面の上から「実績解除！」の帯(js/screens.js)
   }
 }
 

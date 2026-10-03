@@ -30,7 +30,8 @@ body {
 .note { color: #8a8a99; font-size: 13px; margin-bottom: 8px; line-height: 1.6; }
 
 #status { font-size: 15px; line-height: 1.6; }
-.status-top { display: flex; gap: 24px; margin-bottom: 4px; }
+/* ステータス欄の上の行:長くなったら(自害… や状態異常がたくさん)次の行に折り返す(横に伸びて、右の列が押されて動かないように) */
+.status-top { display: flex; flex-wrap: wrap; gap: 0 24px; margin-bottom: 4px; }
 .bar { background: #2a2a35; border-radius: 3px; overflow: hidden; margin: 2px 0 6px; }
 .bar-fill { height: 100%; }
 .stats-grid { display: grid; grid-template-columns: repeat(3, auto); gap: 2px 20px; margin-top: 6px; }
@@ -61,6 +62,11 @@ kbd {
 /* 一覧のカーソル(▶)の幅 */
 .cur { display: inline-block; width: 1.2em; }
 .result-title { font-size: 18px; font-weight: bold; }
+/* 冒険の記録の墓碑銘:上が丸い墓石の形の枠。ゆっくり浮かび上がる(js/screens.js の drawResult) */
+.result-epitaph { max-width: 34em; margin: 0 auto 14px; padding: 16px 20px 12px; text-align: center; line-height: 1.9;
+                  color: #c8c8d4; background: #1a1a22; border: 1px solid #555566; border-radius: 48% 48% 4px 4px / 36px 36px 4px 4px;
+                  letter-spacing: 0.05em; animation: epitaph-in 1.6s ease-out; }
+@keyframes epitaph-in { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: translateY(0); } }
 /* 拠点のメニューの上に出すゲームのタイトル */
 .game-title { font-family: Consolas, monospace; font-size: 30px; letter-spacing: 0.45em; color: #c8c0a8;
               text-align: center; margin: 18px 0 22px; padding: 0 0 14px 0.45em; /* 左の padding は字間の分を打ち消して中央にするため */
@@ -83,6 +89,14 @@ kbd {
 .dex-detail { font-size: 14px; line-height: 1.8; position: sticky; top: 0; align-self: start; }
 .dex-name { font-size: 17px; font-weight: bold; margin-bottom: 4px; }
 .dex-label { display: inline-block; width: 6em; color: #999; }
+/* 図鑑の装備の詳しい情報の、まとまりの見出し(性能・手に入れ方・刻むと) */
+.dex-section { margin-top: 10px; padding-bottom: 2px; border-bottom: 1px solid #2c2c38; color: #ffd84d; font-size: 13px; }
+/* 図鑑の装備タブの下の、種類の小さいタブ */
+.sub-tabs { margin-top: -6px; font-size: 13px; }
+.sub-tabs .tab { padding: 1px 10px; }
+/* 図鑑の武器の、ジャンルの絞りこみの行(押すと次のジャンル) */
+.dex-filter { margin: -4px 0 8px; font-size: 13px; cursor: pointer; user-select: none; }
+.dex-filter:hover b { color: #ffd84d; }
 .result-label { display: inline-block; width: 8em; color: #999; }
 .new { color: #000; background: #ff6b6b; border-radius: 3px; padding: 0 4px; font-size: 11px; font-weight: bold; } /* NEW の印 */
 /* 設定パネル */
@@ -106,6 +120,8 @@ kbd {
 .tabs > .tab { flex-shrink: 0; } /* タブを縮めない(入りきらない分はスクロールで見る) */
 .tab { padding: 2px 14px; color: #777; border-radius: 4px 4px 0 0; white-space: nowrap; } /* タブの名前の途中では改行しない */
 .tab.active { color: #fff; background: #262636; border-bottom: 2px solid #ffd84d; }
+.tab.clickable { cursor: pointer; } /* クリック/タップで選べるタブ(onclick は js/town.js の「タブのクリック/タップ」) */
+.tab.clickable:not(.active):hover { color: #bbb; }
 
 /* マップにマウスを合わせたときの詳細ウィンドウ(ツールチップ)。マウスの邪魔をしないよう pointer-events: none */
 #tooltip {
@@ -145,17 +161,204 @@ kbd {
 .map-item { color: #e8d8a8; font-weight: bold; }                  /* 宝の地図(床に落ちているもの) */
 .treasure { color: #ffd84d; font-weight: bold; }                  /* 宝の地図の印(X) */
 .dormant { opacity: 0.55; }                                       /* 眠っている墓守 */
+.in-wall { opacity: 0.4; }                                        /* 壁の中のゴースト */
+.corpse { opacity: 0.4; }                                         /* グールの死体(踏むと完全に倒せる) */
+.corpse.stir { animation: corpse-stir 0.6s steps(1) infinite; }   /* 次に起き上がる死体は点滅 */
+@keyframes corpse-stir { 50% { opacity: 0.9; } }
 .flame { color: #ff8030; font-weight: bold; }                     /* 鬼火の炎 */
 /* ダメージ床(地面ごと色を付ける)。F キーの表示・ブレスの範囲の色が上に重なるよう、それらより前に書く */
 .haz-poison { color: #b070e0; background: #24142c; }               /* 毒沼 */
 .haz-magma  { color: #ff7a30; background: #3a1608; font-weight: bold; } /* マグマ */
+.haz-ice    { color: #bfeaff; background: #12303c; }                /* 凍った床(凛龍のブレスの跡) */
+.haz-fog    { color: #c8a0e0; background: #2c2036; }                /* 毒の霧(瘴龍の球の跡) */
+.ice-wall   { color: #bfeaff; background: #1c4a5c; font-weight: bold; } /* 氷の壁(凛龍。殴ると壊れる) */
 .ball { font-weight: bold; }                                      /* ドラゴンの属性の球(色は属性ごとに style で指定) */
 .danger { background: #6a1414; }                                  /* ブレスが当たる範囲(溜めているあいだ赤く光る) */
+/* 霹龍の落雷の印:黄色く点滅(上にいる敵・自分の記号はそのまま、地面の色だけ変わる) */
+.bolt-sym { color: #ffe14a; font-weight: bold; }
+/* ベヒーモス:岩石・エクリプスメテオの落下地点・岩の陰で助かる床 */
+.rock { color: #e0c090; background: #4a3624; font-weight: bold; }
+.meteor-mark { color: #ff5030; background: #5a1000; font-weight: bold; animation: meteor-blink 0.5s steps(1) infinite; }
+@keyframes meteor-blink { 50% { background: #b02000; color: #ffe0a0; } }
+.safe { background: #143a1c; }
+/* エクリプスメテオの詠唱中:マップが赤黒くなる(--dusk が大きいほど濃い。js/screens.js の drawDungeon) */
+#screen.meteor-dusk { position: relative; }
+#screen.meteor-dusk::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle, rgba(120, 10, 0, 0.35), rgba(30, 0, 0, 0.85));
+  opacity: var(--dusk, 0); mix-blend-mode: multiply;
+}
+/* 画面の揺れ(js/screens.js の screenShake) */
+.shake-small { animation: shake-small 0.4s; }
+.shake-big   { animation: shake-big 0.9s; }
+@keyframes shake-small {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-1.5px, 0.5px); } 50% { transform: translate(1.5px, -0.5px); }
+  75% { transform: translate(-1px, 0); }
+}
+/* 死んだとき:記号が一瞬ふくらんで光り、破片が散るように広がって消える(js/screens.js の deathFx)
+   crumble は敵(0.7秒)、crumble-slow は自分(1.6秒・ゆっくり)。dying は自分が死んだときの画面(色が抜けていく) */
+.crumble, .crumble-slow { display: inline-block; animation: crumble 0.7s ease-in forwards; }
+.crumble-slow { animation-duration: 1.6s; }
+@keyframes crumble {
+  0%   { opacity: 1; transform: scale(1); text-shadow: none; filter: none; }
+  30%  { opacity: 1; transform: scale(1.3); filter: brightness(2); text-shadow: 0 0 6px currentColor; }
+  100% { opacity: 0; transform: scale(0.7) translateY(3px); filter: blur(1px);
+         text-shadow: -7px -6px 1px currentColor, 7px -5px 1px currentColor, -6px 7px 1px currentColor, 6px 6px 1px currentColor, 0 -9px 1px currentColor; }
+}
+#screen.dying { animation: dying-gray 1.6s ease-in forwards; }
+/* マップを包む枠(浮かぶ数字の位置の基準。js/screens.js の drawDungeon) */
+.map-wrap { position: relative; }
+/* 浮かぶ数字・文字(js/screens.js の addPopup):上にふわっと浮かんで消える */
+.pop { position: absolute; transform: translateX(-25%); font-weight: bold; pointer-events: none; white-space: nowrap;
+       text-shadow: 0 0 3px #000, 0 0 2px #000; animation: pop-up 0.9s ease-out forwards; z-index: 5; }
+@keyframes pop-up {
+  0%   { opacity: 0; transform: translate(-25%, 4px) scale(0.8); }
+  15%  { opacity: 1; transform: translate(-25%, -2px) scale(1.15); }
+  70%  { opacity: 1; transform: translate(-25%, -10px) scale(1); }
+  100% { opacity: 0; transform: translate(-25%, -16px) scale(1); }
+}
+/* 地味に浮かぶもの(与えた・受けたダメージ・MISS):細い字・くすんだ色・ふくらまずに少しだけ浮かぶ */
+@keyframes pop-up-quiet {
+  0%   { opacity: 0; transform: translate(-25%, 2px); }
+  20%  { opacity: 0.85; transform: translate(-25%, -2px); }
+  70%  { opacity: 0.85; transform: translate(-25%, -6px); }
+  100% { opacity: 0; transform: translate(-25%, -9px); }
+}
+.pop-dmg, .pop-hurt, .pop-miss { font-weight: normal; font-size: 0.85em; animation: pop-up-quiet 0.7s ease-out forwards; }
+.pop-dmg  { color: #a8a8a8; }                       /* こちらが与えたダメージ */
+.pop-crit { color: #ffd23a; font-size: 1.3em; }     /* 会心のダメージ(大きく) */
+.pop-hurt { color: #b86060; }                       /* こちらが受けたダメージ */
+.pop-heal { color: #5aff8a; }                       /* 回復 */
+.pop-miss { color: #7890a4; font-size: 0.75em; }    /* かわした */
+.pop-level { color: #ffd23a; font-size: 1.1em; }    /* レベルアップ */
+/* マスが一瞬光る(js/screens.js の addTileFx) */
+.fx-crit  { display: inline-block; animation: fx-crit 0.35s ease-out; }  /* 会心の一撃を受けた敵 */
+@keyframes fx-crit { 0% { background: #fff; color: #000; transform: scale(1.4); } 100% { background: transparent; transform: scale(1); } }
+/* 墓に初めて乗ったとき:墓のマスが青白くふわっと光る(js/grave.js の visitGrave) */
+.fx-grave { display: inline-block; animation: fx-grave 1.8s ease-out; }
+@keyframes fx-grave { 0% { box-shadow: 0 0 0 0 rgba(170, 190, 255, 0); } 25% { background: rgba(170, 190, 255, 0.35); box-shadow: 0 0 16px 5px rgba(170, 190, 255, 0.7); } 100% { background: transparent; box-shadow: 0 0 0 0 rgba(170, 190, 255, 0); } }
+/* ふつうの攻撃を受けた敵:白く光って、殴られた向きに少しはねて戻る(右・左・下・上。js/combat.js の playerStrike) */
+.fx-hit-r, .fx-hit-l, .fx-hit-d, .fx-hit-u { display: inline-block; animation: fx-hit 0.18s ease-out; }
+.fx-hit-r { --hx: 3px;  --hy: 0; }
+.fx-hit-l { --hx: -3px; --hy: 0; }
+.fx-hit-d { --hx: 0;    --hy: 3px; }
+.fx-hit-u { --hx: 0;    --hy: -3px; }
+@keyframes fx-hit { 0% { color: #fff; text-shadow: 0 0 6px #fff; transform: translate(var(--hx), var(--hy)); } 100% { transform: translate(0, 0); } }
+.fx-dodge { display: inline-block; animation: fx-dodge 0.3s ease-out; }  /* こちらがかわした */
+@keyframes fx-dodge { 0% { transform: translateX(0); } 35% { transform: translateX(-4px); opacity: 0.5; } 100% { transform: translateX(0); opacity: 1; } }
+/* 敵の技を放った瞬間、範囲のマスが光る(js/enemyskills.js の flashTiles)。ブレスは属性の色 */
+.fx-el-fire, .fx-el-poison, .fx-el-ice, .fx-el-thunder, .fx-slash, .fx-quake { animation: fx-tile 0.45s ease-out; }
+.fx-el-fire    { --fx: #ff7a30; }
+.fx-el-poison  { --fx: #b060e0; }
+.fx-el-ice     { --fx: #9fe4ff; }
+.fx-el-thunder { --fx: #ffe14a; }
+.fx-slash      { --fx: #ffffff; }   /* ガーゴイルの薙ぎ払い・回転切り */
+.fx-quake      { --fx: #b08850; }   /* ベヒーモスの地響き */
+@keyframes fx-tile { 0% { background: var(--fx); } 100% { background: transparent; } }
+/* 自分の @ の色:かかっている状態異常の色(js/screens.js の playerStatusClass) */
+.player.st-poison  { color: #c070e0; }
+.player.st-burn    { color: #ff7a40; }
+.player.st-chill   { color: #8fd8ff; }
+.player.st-shock   { color: #ffe14a; animation: st-blink 0.5s steps(1) infinite; }
+.player.st-confuse { color: #e080c0; }
+.player.st-blind   { color: #8a8a8a; }
+.player.st-bind    { color: #d8c890; }
+@keyframes st-blink { 50% { color: #ffffff; } }
+/* 名前を大きく出す(js/screens.js の showBanner。エリート・墓守・龍が初めて見えたとき) */
+#fx-banner { position: absolute; left: 0; right: 0; top: 38%; text-align: center; pointer-events: none; opacity: 0; z-index: 20; }
+#fx-banner.show { animation: banner 2.2s ease-out forwards; }
+#fx-banner .banner-sub { font-size: 14px; letter-spacing: 0.4em; color: #ccc; }
+#fx-banner .banner-title { font-size: 30px; font-weight: bold; letter-spacing: 0.15em; text-shadow: 0 0 8px #000, 0 0 4px #000; }
+#fx-banner.banner-elite .banner-title { color: #ffd23a; }
+#fx-banner.banner-dragon .banner-title { color: #e6eaf2; text-shadow: 0 0 12px #8fd8ff, 0 0 4px #000; }
+#fx-banner.banner-layer .banner-title { color: #ff9a6a; }
+@keyframes banner {
+  0% { opacity: 0; transform: scale(1.3); } 15% { opacity: 1; transform: scale(1); }
+  75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); }
+}
+#fx-banner.banner-legendary .banner-title { color: #ffa040; text-shadow: 0 0 12px #ffa040, 0 0 4px #000; }
+#fx-banner.banner-mythic .banner-title { color: #ff4d6d; text-shadow: 0 0 14px #ff4d6d, 0 0 4px #000; }
+/* 実績を取ったとき:画面の上から帯が下りてくる(js/screens.js の showAchievementToast) */
+#fx-toast { position: fixed; top: 0; left: 50%; transform: translate(-50%, -110%); z-index: 1100; pointer-events: none;
+            background: linear-gradient(#3a2c08, #241a04); border: 1px solid #ffd23a; border-top: none; border-radius: 0 0 8px 8px;
+            padding: 8px 28px 10px; text-align: center; box-shadow: 0 4px 18px rgba(255, 210, 58, 0.35); }
+#fx-toast.show { animation: toast 3.2s ease-in-out forwards; }
+#fx-toast .toast-head { color: #ffd23a; font-weight: bold; font-size: 13px; letter-spacing: 0.2em; }
+#fx-toast .toast-name { color: #fff; font-size: 16px; font-weight: bold; }
+@keyframes toast {
+  0% { transform: translate(-50%, -110%); } 12% { transform: translate(-50%, 0); }
+  85% { transform: translate(-50%, 0); } 100% { transform: translate(-50%, -110%); }
+}
+/* 次の階に着いたとき:真っ暗から、ふわっと明るくなる(js/screens.js の fadeInFloor) */
+#fx-fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 15; }
+#fx-fade.show { animation: fx-fade 0.6s ease-out; }
+@keyframes fx-fade { 0% { opacity: 1; } 100% { opacity: 0; } }
+/* レア以上の装備を拾ったとき:足元がレア度の色で光る(js/items.js の pickUpEquipment) */
+.fx-glow-rare, .fx-glow-epic, .fx-glow-legendary, .fx-glow-mythic { display: inline-block; animation: fx-glow 0.9s ease-out; }
+.fx-glow-rare      { --fx: #5ab0ff; }
+.fx-glow-epic      { --fx: #2ec4a0; }
+.fx-glow-legendary { --fx: #ffa040; }
+.fx-glow-mythic    { --fx: #ff4d6d; }
+@keyframes fx-glow { 0% { background: var(--fx); box-shadow: 0 0 14px 4px var(--fx); } 100% { background: transparent; box-shadow: none; } }
+/* 刻んだ瞬間:画面のふちが紫と金に光る(js/items.js の engraveEquipment) */
+.fx-engrave { animation: fx-engrave 0.9s ease-out; }
+@keyframes fx-engrave { 0% { box-shadow: 0 0 0 0 rgba(180, 120, 255, 0); } 30% { box-shadow: 0 0 20px 4px rgba(180, 120, 255, 0.9), inset 0 0 12px rgba(255, 210, 58, 0.6); } 100% { box-shadow: 0 0 0 0 rgba(180, 120, 255, 0); } }
+/* 霹龍の落雷:画面がほんの一瞬だけ明るくなる(js/screens.js の screenFlash("bolt")) */
+#fx-flash.flash-bolt { animation: fx-flash-bolt 0.25s ease-out; }
+@keyframes fx-flash-bolt { 0% { opacity: 0; } 20% { opacity: 0.25; } 100% { opacity: 0; } }
+/* レベルアップ:画面のふちとステータス欄が金色に光る(js/screens.js の frameFx) */
+.fx-levelup { animation: fx-levelup 1.2s ease-out; }
+@keyframes fx-levelup { 0% { box-shadow: 0 0 0 0 rgba(255, 210, 58, 0); } 20% { box-shadow: 0 0 18px 4px rgba(255, 210, 58, 0.9); } 100% { box-shadow: 0 0 0 0 rgba(255, 210, 58, 0); } }
+/* HP が少ないとき:画面のふちが赤く脈打つ */
+.low-hp { animation: low-hp 1.2s ease-in-out infinite; }
+@keyframes low-hp { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(255, 40, 40, 0); } 50% { box-shadow: inset 0 0 26px 2px rgba(255, 40, 40, 0.55); } }
+/* ログの目立つ行(会心の一撃・痛恨の一撃・レベルアップ。js/util.js の drawLog) */
+.log-new.log-crit { color: #ffd23a; font-weight: bold; }
+.log-new.log-ouch { color: #ff7070; font-weight: bold; }
+@keyframes dying-gray { from { filter: none; } to { filter: grayscale(1) brightness(0.55); } }
+@keyframes shake-big {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-10px, 4px); } 20% { transform: translate(9px, -5px); } 30% { transform: translate(-8px, -3px); }
+  40% { transform: translate(7px, 4px); } 55% { transform: translate(-5px, 2px); } 70% { transform: translate(4px, -2px); }
+  85% { transform: translate(-2px, 1px); }
+}
+/* 中くらいの揺れ(メテオのあとに続く爆発。js/screens.js の screenShake) */
+.shake-mid { animation: shake-mid 0.6s; }
+@keyframes shake-mid {
+  0%, 100% { transform: translate(0, 0); }
+  12% { transform: translate(-6px, 3px); } 25% { transform: translate(5px, -3px); } 40% { transform: translate(-4px, -2px); }
+  55% { transform: translate(3px, 2px); } 75% { transform: translate(-2px, 1px); }
+}
+/* だんだん弱まる長い地鳴り(メテオの最後) */
+.shake-rumble { animation: shake-rumble 1.8s linear; }
+@keyframes shake-rumble {
+  0%, 100% { transform: translate(0, 0); }
+  5% { transform: translate(-5px, 2px); } 10% { transform: translate(4px, -2px); } 15% { transform: translate(-4px, -1px); }
+  20% { transform: translate(4px, 2px); } 27% { transform: translate(-3px, 1px); } 34% { transform: translate(3px, -1px); }
+  42% { transform: translate(-2px, 1px); } 50% { transform: translate(2px, -1px); } 60% { transform: translate(-1.5px, 0.5px); }
+  70% { transform: translate(1.5px, -0.5px); } 80% { transform: translate(-1px, 0); } 90% { transform: translate(0.5px, 0); }
+}
+/* 画面全体の白い光(js/screens.js の screenFlash) */
+#fx-flash, #fx-flash-after { position: fixed; inset: 0; background: #fff8e0; opacity: 0; pointer-events: none; z-index: 1000; }
+#fx-flash.flash { animation: fx-flash 1.2s ease-out; }
+@keyframes fx-flash { 0% { opacity: 0; } 8% { opacity: 1; } 100% { opacity: 0; } }
+/* メテオのあとに続く爆発のオレンジの光(強さは --fx-power) */
+#fx-flash-after { background: #ff8a30; }
+#fx-flash-after.flash { animation: fx-flash-after 0.9s ease-out; }
+@keyframes fx-flash-after { 0% { opacity: 0; } 10% { opacity: var(--fx-power, 0.5); } 100% { opacity: 0; } }
+.bolt-mark { background: #4a3c00; animation: bolt-blink 0.6s steps(1) infinite; }
+@keyframes bolt-blink { 50% { background: #8a7000; } }
 .atk { background: #3e1a1a; }                                     /* F キー:敵の攻撃が届く範囲(薄い赤) */
 .vis { background: #2e2a14; }                                     /* F キー:気づいていない敵の視界(薄い黄色) */
+.aim { background: #143a2a; }                                     /* 弓で狙っているあいだ、矢が届く範囲(薄い緑) */
 .poison { color: #b060d0; font-weight: bold; }                    /* 毒 */
 .burn { color: #ff7a40; font-weight: bold; }                      /* やけど */
 .blind { color: #9aa0c8; font-weight: bold; }                     /* 盲目 */
+.confuse { color: #e080c0; font-weight: bold; }                   /* 混乱 */
+.bind { color: #d8c890; font-weight: bold; }                      /* 拘束 */
+.chill { color: #8fd8ff; font-weight: bold; }                     /* 凍え */
+.shock { color: #ffe14a; font-weight: bold; }                     /* しびれ */
 .mem { opacity: 0.4; }                                            /* 盲目などで今は見えない、前に見た地形(薄く残す) */
 .floor.mem { opacity: 0.6; }                                      /* 床はもともと暗いので、消えすぎないように */
 .route { color: #e0c070; }                                        /* この階に来るときに選んだ道 */
@@ -179,6 +382,9 @@ kbd {
 .lump { color: #c8b8a0; font-weight: bold; }                           /* 謎の塊 */
 /* 一族の札(刻印の名前の横)。背景の色は一族ごとに style で指定 */
 .clan-badge { color: #111; border-radius: 3px; padding: 0 4px; font-size: 12px; white-space: nowrap; }
+/* 武器のジャンルの札(例:槍)。着けている武器と刻印のジャンルが同じときは .match で明るくする */
+.kind-tag { color: #c8c8c8; border: 1px solid #777; border-radius: 3px; padding: 0 3px; font-size: 12px; white-space: nowrap; }
+.kind-tag.match { color: #111; background: #8fe08f; border-color: #8fe08f; }
 .book { color: #ffae42; font-weight: bold; }
 .trait-on { color: #ffae42; }
 .bless { color: #7fd6a0; }   /* 呪われた装備の良い効果 */
@@ -188,14 +394,35 @@ kbd {
 .mini-bar { display: inline-block; width: 90px; height: 6px; background: #2a2a35; border-radius: 3px; overflow: hidden; vertical-align: middle; }
 .mini-bar > span { display: block; height: 100%; }
 
+/* スマホの引き出しの [≡] とうしろの幕は、ふだん(パソコンの広い画面)は出さない。出すのは下の「幅の狭い画面」のとき */
+#side-toggle, #side-backdrop { display: none; }
+
 /* ==================== スマホなど、幅の狭い画面 ==================== */
-/* 縦持ちのスマホを想定。右の列(装備・依頼・ログ・設定)はマップの下に回す */
+/* 縦持ちのスマホを想定。右の列(装備・依頼・ログ・設定)は右上の [≡] で出す引き出しにする */
 @media (max-width: 800px) {
   body { margin: 8px; }
   .layout { flex-direction: column; gap: 8px; }
   .main { width: 100%; gap: 8px; }
-  .side { width: 100%; flex: none; gap: 8px; }
   .panel { padding: 8px 10px; }
+  /* 右の列は「引き出し」にする:ふだんは画面の右の外に隠れていて、[≡] で右からすっと出てくる(js/touch.js の toggleSideDrawer) */
+  .side {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 60;
+    width: 85vw; max-width: 420px; flex: none; gap: 8px;
+    padding: 56px 8px calc(16px + env(safe-area-inset-bottom)); box-sizing: border-box; /* 上は [≡] の分あける */
+    background: #0c0c10; border-left: 1px solid #2c2c38; overflow-y: auto;
+    transform: translateX(100%); transition: transform 0.2s ease-out;
+  }
+  body.side-open .side { transform: none; }
+  #log { height: 40vh; font-size: 13px; }
+  /* 右上の [≡]:画面の右上に固定。引き出しより上に出す(開いているときは閉じるボタンになる) */
+  #side-toggle {
+    display: block; position: fixed; top: 8px; right: 8px; z-index: 70;
+    width: 40px; height: 40px; padding: 0; font-size: 22px; line-height: 1;
+    color: #ddd; background: rgba(29, 29, 38, 0.92); border: 1px solid #44445a; border-radius: 8px;
+  }
+  body.side-open #side-toggle { background: #3a3a50; }
+  /* 引き出しが開いているときの、うしろの暗い幕(タップで閉じる) */
+  body.side-open #side-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, 0.5); }
   /* マップ(横 mapWidth 文字)が画面の幅に収まるように、文字を小さくする
      等幅の文字の幅は、文字の大きさのだいたい 0.6 倍。60文字 × 0.6 = 36 なので、使える幅 ÷ 36 にする
      (#screen の幅・高さは文字数で決めているので、文字を小さくすると画面も一緒に小さくなる) */
@@ -205,7 +432,6 @@ kbd {
   .text-body { font-size: 14px; }
   .status-top { flex-wrap: wrap; gap: 4px 14px; }
   #status { font-size: 14px; }
-  #log { height: 160px; font-size: 13px; }
   /* 図鑑:一覧と説明を横に並べると狭いので、縦に並べる */
   .dex { grid-template-columns: 1fr; }
   .dex-list { border-right: none; border-bottom: 1px solid #2c2c38; padding: 0 0 8px; max-height: 30vh; overflow-y: auto; }

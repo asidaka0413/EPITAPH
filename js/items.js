@@ -180,8 +180,11 @@ function equipName(eq) {
 
 // 装備の名前と性能(画面用)。呪われた装備は「呪」の印と、効果を下の行に出す
 //   extra:ステータスのすぐ後ろに付け足す HTML(「(指輪1に装備中)」など)
+//   武器はジャンルの札(例:[槍])を付ける。セットしている武器の刻印と同じジャンルなら、札の色が変わる
 function equipHTML(eq, extra = "") {
-  const tag = (eq.cursed ? `<span class="curse-tag">呪</span> ` : "") + rarityTagHTML(eq);
+  const kind = weaponKindOf(eq);
+  const kindTag = kind ? `${weaponKindBadgeHTML(kind, !!base.materialSet.weapon && materialKinds(base.materialSet.weapon).includes(kind))} ` : "";
+  const tag = (eq.cursed ? `<span class="curse-tag">呪</span> ` : "") + rarityTagHTML(eq) + kindTag;
   const block = eq.block ? ` ${span("shield", `防${eq.block}%`)}` : "";
   const fx = eq.effects && eq.effects.length ? `<div class="sub">${effectsHTML(eq.effects, true)}</div>` : "";
   return `${tag}${esc(equipName(eq))} ${statsHTML(eq.stats, eq.rolls)}${block}${extra}${fx}`;
@@ -228,10 +231,18 @@ function statDiffHTML(before, after) {
 function pickUpEquipment(eq, countFound = true) {
   if (countFound) base.records.equipFound[eq.id] = (base.records.equipFound[eq.id] || 0) + 1; // 図鑑に登録
   runPickups.push(eq);
+  playSE("pickup"); // 効果音(js/sound.js)
   const r = rarityOf(eq);
-  addLog(`${eq.cursed ? "呪われた" : ""}${r ? `【${r.name}】` : ""}${eq.name}[${ITEM_TYPES[eq.slot].name}]を拾った！ ${statsText(eq.stats, eq.rolls)}`);
+  const kind = weaponKindOf(eq); // 武器はジャンルも出す(例:[武器・槍])
+  addLog(`${eq.cursed ? "呪われた" : ""}${r ? `【${r.name}】` : ""}${eq.name}[${ITEM_TYPES[eq.slot].name}${kind ? `・${WEAPON_KINDS[kind].name}` : ""}]を拾った！ ${statsText(eq.stats, eq.rolls)}`);
   // レア度の良い効果(呪われた装備は、下で呪いと一緒に出す)
   if (r && !eq.cursed && eq.effects && eq.effects.length) addLog(`　${eq.effects.map(fx => effectText(fx, true)).join(" / ")}`);
+  // 演出:レア以上なら、足元がレア度の色で光ってレア度が浮かぶ。レジェンド・ミシックは名前も大きく出す(js/screens.js)
+  if (r && r.id !== "common") {
+    addTileFx(px, py, `fx-glow-${r.id}`, 900);
+    addPopup(px, py, `【${r.name}】`, r.cls);
+    if (r.id === "legendary" || r.id === "mythic") showBanner(eq.name, r.name, `banner-${r.id}`);
+  }
   if (eq.cursed) {
     // 呪われた装備は自動では着けない(一度着けると外せないので、自分で決める)
     addLog(`　${(eq.effects || []).map(fx => effectText(fx, true)).join(" / ")}(着けると外せない)`);
@@ -298,6 +309,11 @@ function switchInvTab(step) {
   invCursor = 0;
   invPickSlot = null;
   render();
+}
+
+// 持ち物画面のタブをクリック/タップしたとき(i 番目のタブへ)
+function invClickTab(i) {
+  switchInvTab(i - invTab);
 }
 
 // 枠 slot に着けられる装備の一覧(先頭の null は「外す」)
@@ -465,6 +481,12 @@ function switchRefineTab(step) {
   refineCursor = 0;
 }
 
+// 刻む画面のタブをクリック/タップしたとき(i 番目のタブへ)
+function refineClickTab(i) {
+  switchRefineTab(i - refineTab);
+  render();
+}
+
 // 刻む画面で Enter:選んだ装備を刻む
 //   刻印がいっぱい(materialMax)なら、代わりに解体する刻印を選ぶ一覧を開く
 function refineSelected() {
@@ -522,6 +544,8 @@ function chooseDiscard() {
 // 装備を刻んで、新しい刻印を1個作る
 function engraveEquipment(eq) {
   turn += 1;
+  frameFx("fx-engrave", 900); // 演出:刻んだ瞬間、画面のふちが紫と金に光る(js/screens.js)
+  playSE("engrave"); // 効果音(js/sound.js)
   // 新しい刻印を1個作って、ストックに追加する
   // 呪われた装備の効果(良い効果も呪いも)は、そのままの強さで刻印に引き継ぐ
   // name:刻印の名前 / sources:元の装備の id の一覧(equipment.js の id。合成すると2つになる。一族のセット効果に使う)
@@ -551,10 +575,19 @@ function finishRefineOne(eq) {
     refineCursor = Math.max(0, Math.min(refineCursor, rows - 1));
   } else {
     salvageLeftovers(); // 刻まなかった装備は、少しの素材になる
-    goToTown();
+    // 刻んだ光(fx-engrave)を見せてから拠点へ。待っているあいだはキーを受けつけない(js/input.js の pressKey)
+    refineFinishing = true;
+    setTimeout(() => {
+      refineFinishing = false;
+      goToTown();
+      render();
+    }, BALANCE.engraveToTownMs);
   }
   render();
 }
+
+// 最後に刻んだあと、拠点へ移るのを待っているあいだ true
+let refineFinishing = false;
 
 // ==================== 素材 ====================
 // 敵を倒したとき:その敵の系統の素材を手に入れる(すぐ拠点に入るので、死んでもなくならない)
@@ -562,12 +595,19 @@ function finishRefineOne(eq) {
 function gainMonsterResource(m) {
   const id = m.data.material;
   if (!id) return;
-  // 特性「拾い上手」で +1(エリートは、それも含めて10倍)。険しい道ではさらに倍
-  const amount = Math.round(((m.data.materialAmount || 1) + traitMax("bonusMaterial", 0))
+  // 特性「拾い上手」・効果「鉱脈」(宝石虫の甲殻)で +1(エリートは、それも含めて10倍)。険しい道ではさらに倍
+  const amount = Math.round(((m.data.materialAmount || 1) + traitMax("bonusMaterial", 0) + effectValue("materialPlus"))
     * (m.elite ? BALANCE.eliteMaterialMultiplier : 1) * routeFx("materialRate", 1));
   base.resources[id] = (base.resources[id] || 0) + amount;
   runStats.resources[id] = (runStats.resources[id] || 0) + amount;
   addLog(`${RESOURCE_TYPES[id].name}を${amount}個手に入れた`);
+  // ほかにも落とす素材(龍の鉱石など。monsters.js の bonusMaterials)
+  for (const bid in m.data.bonusMaterials || {}) {
+    const n = Math.round(m.data.bonusMaterials[bid] * (m.elite ? BALANCE.eliteMaterialMultiplier : 1) * routeFx("materialRate", 1));
+    base.resources[bid] = (base.resources[bid] || 0) + n;
+    runStats.resources[bid] = (runStats.resources[bid] || 0) + n;
+    addLog(`${RESOURCE_TYPES[bid].name}を${n}個手に入れた`);
+  }
 }
 
 // エリートを倒したとき:holyWaterDropChance の確率で聖水を手に入れる(すぐ拠点に入る。運で少し上がる)
@@ -599,12 +639,16 @@ function materialMarks(mat) {
 // 刻印の名前と性能(ステータスと、呪われた装備から引き継いだ効果)。名前がなければ性能だけ
 //   強化値や「呪」「浄化」の印は materialMarks で、名前とは別に出す
 //   一族の固有装備から刻んだ刻印は、名前のあとに一族の札(一族の色で、短い名前。例:[ゴブリン][不死])
+//   武器の刻印は、ジャンルの札も付ける(着けている武器と同じジャンルなら色が変わる)
 function materialStatsHTML(mat) {
-  const clans = materialClans(mat).map(c => `${clanBadgeHTML(c)} `).join("");
+  const match = materialKindMatch(mat);
+  const clans = materialKinds(mat).map(k => `${weaponKindBadgeHTML(k, match)} `).join("")
+    + materialClans(mat).map(c => `${clanBadgeHTML(c)} `).join("");
   const r = rarityOf(mat); // レア度つきの刻印は、名前をレア度の色に
   const name = mat.name ? `${span(r ? `mat-name ${r.cls}` : "mat-name", mat.name)} ${clans}` : clans;
   const fx = mat.effects && mat.effects.length ? ` ${effectsHTML(mat.effects, true)}` : "";
-  return `${name}${statsHTML(mat.stats)}${fx}`;
+  const bonus = match ? ` ${span("up", `(同じジャンル +${Math.round(BALANCE.weaponKindBonus * 100)}%)`)}` : "";
+  return `${name}${statsHTML(mat.stats)}${bonus}${fx}`;
 }
 
 // 刻印の性能の合計(一覧を並べる順番に使う)

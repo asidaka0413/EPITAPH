@@ -24,6 +24,7 @@ const TOUCH_BUTTONS = [
   { key: "i",      label: "持ち物", area: "act" },
   { key: "h",      label: "回復薬", area: "act" },
   { key: "f",      label: "視界",   area: "act" },
+  { key: "r",      label: "弓で撃つ", area: "act", cls: "small" }, // 押すと狙う → 十字キーで撃つ
   { key: "x",      label: "自害(長押し)", area: "act", hold: true, cls: "danger-btn" },
 ];
 
@@ -90,4 +91,14 @@ function touchRelease(b, btn) {
 function stopTouchRepeat() {
   if (touchRepeatTimer) clearTimeout(touchRepeatTimer);
   touchRepeatTimer = null;
+}
+
+// ==================== 右上の引き出し ====================
+// 幅の狭い画面(スマホ)では、右の列(装備・依頼・ログ・設定)を隠しておき、右上の [≡] をタップすると右から出てくる
+// 見た目は style.css の「スマホなど、幅の狭い画面」。パソコンの広い画面では [≡] は出ない
+//   open:true なら開く / false なら閉じる / 省略すると開け閉めを切り替える
+function toggleSideDrawer(open) {
+  const willOpen = open === undefined ? !document.body.classList.contains("side-open") : open;
+  document.body.classList.toggle("side-open", willOpen);
+  hideTooltip(); // マップをタップして出した詳細ウィンドウは消す
 }

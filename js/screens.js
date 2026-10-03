@@ -11,6 +11,9 @@ function render() {
   const inDungeon = inRunScreen();
   document.getElementById("status-panel").style.display = inDungeon ? "" : "none";
   document.getElementById("equip-panel").style.display = inDungeon ? "" : "none";
+  // HP が少ないとき(lowHpRate 以下):画面のふちが赤く脈打つ(ダンジョンのマップのときだけ)
+  document.getElementById("screen").parentElement.classList.toggle("low-hp",
+    screenMode === "dungeon" && !playerDying && playerHP > 0 && playerHP <= maxHP * BALANCE.lowHpRate);
 
   if (screenMode === "town") {
     drawTown();
@@ -26,6 +29,8 @@ function render() {
     drawCamp();
   } else if (screenMode === "swap") {
     drawSwap();
+  } else if (screenMode === "soundtest") {
+    drawSoundTest(); // デバッグのサウンドテスト(js/debug.js)
   } else {
     drawDungeon();
   }
@@ -61,6 +66,194 @@ function setScreen(title, html, isMap) {
   if (sel) sel.scrollIntoView({ block: "nearest" });
 }
 
+// ==================== 演出(画面の揺れ・光) ====================
+// 画面を揺らす(kind:"small" / "big")。マップの枠(#screen の外側)に、揺れのクラスを少しのあいだ付ける
+//   #screen は描き直すたびにクラスが消えるので、外側の枠に付ける
+function screenShake(kind) {
+  const el = document.getElementById("screen").parentElement;
+  const cls = `shake-${kind}`;
+  const kinds = ["shake-small", "shake-mid", "shake-big", "shake-rumble"];
+  if (kind === "small" && kinds.some(k => k !== cls && el.classList.contains(k))) return; // 大きく揺れている最中は、小さい揺れで上書きしない
+  el.classList.remove(...kinds);
+  void el.offsetWidth; // 続けて揺らしたときも、最初から揺れ直すように
+  el.classList.add(cls);
+  const ms = { small: 400, mid: 600, big: 900, rumble: 1800 }[kind]; // style.css の秒数と同じ
+  setTimeout(() => el.classList.remove(cls), ms);
+}
+
+// 画面全体を光らせる。kind:"big"(白く強く。エクリプスメテオの爆発)/ "bolt"(ほんの一瞬だけ明るく。霹龍の落雷)/
+//   "after"(オレンジの光。メテオのあとに続く爆発。power:強さ 0〜1。白い光の上に重ねられるよう、別の板で光らせる)
+function screenFlash(kind = "big", power = 1) {
+  const id = kind === "after" ? "fx-flash-after" : "fx-flash";
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = id;
+    document.body.appendChild(el);
+  }
+  el.classList.remove("flash", "flash-bolt");
+  el.style.setProperty("--fx-power", power);
+  void el.offsetWidth;
+  el.classList.add(kind === "bolt" ? "flash-bolt" : "flash");
+}
+
+// マップの真ん中に、名前を大きく出して消す(エリート・龍が初めて見えたとき・新しい層に入ったときなど)
+//   title:大きく出す文字 / sub:その上に小さく出す文字 / cls:色などの CSS のクラス
+function showBanner(title, sub = "", cls = "") {
+  const panel = document.getElementById("screen").parentElement;
+  let el = document.getElementById("fx-banner");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "fx-banner";
+    panel.style.position = "relative";
+    panel.appendChild(el);
+  }
+  el.className = "";
+  el.innerHTML = `${sub ? `<div class="banner-sub">${esc(sub)}</div>` : ""}<div class="banner-title">${esc(title)}</div>`;
+  void el.offsetWidth;
+  el.className = `show ${cls}`;
+}
+
+// 実績を取ったとき:画面の上から「実績解除！」の帯が下りてきて、少しして消える(js/achievements.js の checkAchievements)
+//   names:取った実績の名前の一覧(いっぺんに取ったら全部並べる)
+function showAchievementToast(names) {
+  let el = document.getElementById("fx-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "fx-toast";
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<div class="toast-head">★ 実績解除！</div>${names.map(n => `<div class="toast-name">${esc(n)}</div>`).join("")}`;
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+  playSE("achieve"); // 効果音(js/sound.js)
+}
+
+// 次の階に着いたとき:マップの枠を真っ暗にしてから、ふわっと明るくする(js/route.js の goToFloor)
+function fadeInFloor() {
+  const panel = document.getElementById("screen").parentElement;
+  let el = document.getElementById("fx-fade");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "fx-fade";
+    panel.style.position = "relative";
+    panel.appendChild(el);
+  }
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+}
+
+// 初めて見えた大物(エリート・墓守・龍)の名前を出す(1体につき1回。drawDungeon から呼ぶ)
+function announceBigMonsters() {
+  for (const m of monsters) {
+    if (m.announced || m.disguised || !canSeeTile(m.x, m.y)) continue;
+    const sub = m.guardian ? "墓守" : m.elite ? "エリート" : m.data.onePerFloor ? "龍の一族" : "";
+    if (!sub) continue;
+    m.announced = true;
+    showBanner(m.guardian || m.elite ? monsterName(m) : m.data.name, sub, m.data.onePerFloor ? "banner-dragon" : "banner-elite");
+    return; // 一度に出すのは1体だけ(残りは次に描くとき)
+  }
+}
+
+// 自分の @ の色:かかっている状態異常の色(いくつもあれば、上にあるものほど優先)
+function playerStatusClass() {
+  if (playerAilments.shock) return " st-shock";
+  if (playerAilments.chill) return " st-chill";
+  if (playerBound) return " st-bind";
+  if (playerConfused) return " st-confuse";
+  if (playerDots.burn) return " st-burn";
+  if (playerDots.poison) return " st-poison";
+  if (playerBlind) return " st-blind";
+  return "";
+}
+
+// ==================== 演出(マスの光・浮かぶ数字・画面のふち) ====================
+// マスを一瞬光らせる(addTileFx)・マスの上に数字や文字を浮かべる(addPopup)・画面のふちを光らせる(frameFx)
+//   マップは描き直すたびに作り直すので、始まってからの時間ぶんアニメーションを先に進めて(animation-delay をマイナスに)続きから描く
+const POPUP_MS = 900; // 浮かぶ数字の長さ(style.css の pop-up と同じ)
+let tileFx = [];      // 光っているマス。1個の形:{ x, y, cls: CSS のクラス, start, dur }
+let popups = [];      // 浮かんでいる文字。1個の形:{ x, y, text, cls: CSS のクラス, start, row: 同じマスで何個目か }
+
+// 終わったころにマップを描き直して、演出を消す
+function scheduleFxRender(ms) {
+  setTimeout(() => { if (screenMode === "dungeon" && !playerDying) render(); }, ms + 50);
+}
+
+// マス (x, y) を、cls のアニメーションで ms ミリ秒光らせる(会心・回避など)
+function addTileFx(x, y, cls, ms) {
+  tileFx.push({ x, y, cls, start: performance.now(), dur: ms });
+  scheduleFxRender(ms);
+}
+
+function tileFxAt(x, y) {
+  const now = performance.now();
+  tileFx = tileFx.filter(f => now - f.start < f.dur);
+  return tileFx.find(f => f.x === x && f.y === y) || null;
+}
+
+// マス (x, y) の上に text を浮かべる(ダメージの数字・MISS・回復など)。同じマスに続けて出すと、少しずつ上にずらす
+function addPopup(x, y, text, cls) {
+  const now = performance.now();
+  popups = popups.filter(p => now - p.start < POPUP_MS);
+  const row = popups.filter(p => p.x === x && p.y === y).length;
+  popups.push({ x, y, text: String(text), cls, start: now, row });
+  scheduleFxRender(POPUP_MS);
+}
+
+// 浮かんでいる文字の HTML(マップの上に重ねる。1マス = 横 1ch・縦 1.15em。style.css の #screen.map-mode と同じ)
+function popupsHTML() {
+  const now = performance.now();
+  popups = popups.filter(p => now - p.start < POPUP_MS);
+  // 外側(pop)で位置を決め、内側(cls)で色と大きさを変える(大きい文字でも位置がずれないように)
+  return popups.filter(p => canSeeTile(p.x, p.y)).map(p =>
+    `<span class="pop" style="left:${p.x}ch;top:${((p.y - 0.6 - p.row * 0.8) * 1.15).toFixed(2)}em;`
+    + `animation-delay:-${Math.round(now - p.start)}ms"><span class="${p.cls}">${esc(p.text)}</span></span>`).join("");
+}
+
+// 画面のふち(マップの枠)とステータス欄を光らせる(レベルアップなど。cls:CSS のクラス)
+function frameFx(cls, ms) {
+  for (const el of [document.getElementById("screen").parentElement, document.getElementById("status-panel")]) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), ms);
+  }
+}
+
+// ==================== 演出(死んだとき) ====================
+// 倒れた敵は、そのマスで少しのあいだ砕け散る(style.css の crumble)。自分が死んだときは、ゆっくり砕けて画面の色が抜ける
+//   マップは描き直すたびに作り直すので、始まってからの時間ぶんアニメーションを先に進めて(animation-delay をマイナスに)続きから描く
+const DEATH_FX_MS = 700;      // 敵が砕け散る長さ(style.css の crumble と同じ)
+const PLAYER_DEATH_MS = 1600; // 自分が砕け散る長さ(style.css の crumble-slow・dying と同じ)
+let deathFx = [];             // 砕け散っている敵。1個の形:{ x, y, symbol, color, start: 始まった時刻 }
+let playerDying = false;      // 自分が砕け散っているあいだ true(キー入力を受けつけない。js/input.js の pressKey)
+
+// 倒れた敵 m の砕け散る演出を始める(js/combat.js の killMonster)
+function addDeathFx(m) {
+  const color = m.elite ? BALANCE.eliteColor : monsterColor(m.data);
+  deathFx.push({ x: m.x, y: m.y, symbol: m.data.symbol, color, start: performance.now() });
+  setTimeout(() => { if (screenMode === "dungeon" && !playerDying) render(); }, DEATH_FX_MS + 50); // 終わったら消す
+}
+
+// (x, y) で砕け散っている敵(終わったものは消す)
+function deathFxAt(x, y) {
+  const now = performance.now();
+  deathFx = deathFx.filter(f => now - f.start < DEATH_FX_MS);
+  return deathFx.find(f => f.x === x && f.y === y) || null;
+}
+
+// 自分が死んだ:ゆっくり砕け散る演出のあと、then を呼ぶ(リザルト画面へ)
+function playPlayerDeath(then) {
+  playerDying = true;
+  render();
+  setTimeout(() => {
+    playerDying = false;
+    then();
+  }, PLAYER_DEATH_MS);
+}
+
 // 表の形の一覧の1行(列がそろう)。先頭にカーソル(▶)の列がつく
 //   cols:各列の幅(CSS の grid-template-columns の書き方。"7em 1fr" など) / cells:各列の中身(HTML)
 function gridRow(isSel, cols, cells) {
@@ -87,15 +280,22 @@ function isWallVisible(x, y) {
 
 // マップの1マスを、記号と色(CSS のクラス名)にする。何も描かないマスは null
 function tileAt(x, y) {
-  if (x === px && y === py) return ["@", "player"];
+  if (x === px && y === py) return ["@", playerDying ? "player crumble-slow" : `player${playerStatusClass()}`];
   if (!canSeeTile(x, y)) return rememberedTileAt(x, y); // 盲目などで見えないマス
   const m = monsterAt(x, y);
   if (m) {
     if (m.disguised) return ["&", "chest"]; // 宝箱に化けたミミック(本物の宝箱と同じ見た目)
     if (m.primed) return [m.data.symbol, "monster primed", null]; // 膨らんだ爆ぜ虫(次に爆発する)
-    if (m.elite) return [m.data.symbol, `monster elite${m.dormant ? " dormant" : ""}`, BALANCE.eliteColor]; // エリートは金色・下線(眠っている墓守は薄く)
-    return [m.data.symbol, "monster", monsterColor(m.data)]; // 3つ目は敵ごとの色(一族があれば一族の色)
+    const wall = inWall(m) ? " in-wall" : ""; // 壁の中のゴーストは薄く
+    if (m.elite) return [m.data.symbol, `monster elite${m.dormant ? " dormant" : ""}${wall}`, BALANCE.eliteColor]; // エリートは金色・下線(眠っている墓守は薄く)
+    return [m.data.symbol, `monster${wall}`, monsterColor(m.data)]; // 3つ目は敵ごとの色(一族があれば一族の色)
   }
+  // 倒れたばかりの敵:砕け散っている途中(4つ目は、始まってからの時間。アニメーションを続きから描く)
+  const dfx = deathFxAt(x, y);
+  if (dfx) return [dfx.symbol, "monster crumble", dfx.color, Math.round(performance.now() - dfx.start)];
+  // グールの死体:薄く描く。次に起き上がりそうなら点滅
+  const corpse = corpseAt(x, y);
+  if (corpse) return [corpse.m.data.symbol, `corpse${corpse.wait <= 1 ? " stir" : ""}`, monsterColor(corpse.m.data)];
   const ball = ballAt(x, y);
   if (ball) return ["•", "ball", ELEMENT_DATA[ball.element].color]; // ドラゴンの属性の球(属性の色)
   if (flameAt(x, y)) return ["*", "flame"];
@@ -111,8 +311,15 @@ function tileAt(x, y) {
     const info = ITEM_TYPES[it.equip.slot];
     return [info.symbol, info.cls];
   }
+  // ベヒーモスのエクリプスメテオの落下地点
+  const caster = meteorCaster();
+  if (caster && x === caster.meteor.x && y === caster.meteor.y) return ["*", "meteor-mark"];
+  // 霹龍の落雷:次に落ちる印は「!」(何も置いていない床だけ。点滅は drawDungeon で重ねる)
+  if (lightningMarkAt(x, y)) return ["!", "bolt-sym"];
   const hz = hazardAt(x, y);
-  if (hz) return [HAZARD_TYPES[hz].symbol, HAZARD_TYPES[hz].cls]; // 毒沼・マグマ
+  if (hz) return [HAZARD_TYPES[hz].symbol, HAZARD_TYPES[hz].cls]; // 毒沼・マグマ・凍った床
+  if (iceWallAt(x, y)) return ["#", "ice-wall"]; // 凛龍の氷の壁
+  if (rockAt(x, y)) return ["#", "rock"];         // ベヒーモスの岩石
   if (map[y][x] === "#") return isWallVisible(x, y) ? ["#", "wall"] : null;
   return [".", "floor"];
 }
@@ -124,6 +331,8 @@ function rememberedTileAt(x, y) {
   if (graveAt(x, y)) return ["†", "grave mem"];
   const hz = hazardAt(x, y);
   if (hz) return [HAZARD_TYPES[hz].symbol, `${HAZARD_TYPES[hz].cls} mem`];
+  if (iceWallAt(x, y)) return ["#", "ice-wall mem"];
+  if (rockAt(x, y)) return ["#", "rock mem"];
   if (map[y][x] === "#") return isWallVisible(x, y) ? ["#", "wall mem"] : null;
   return [".", "floor mem"];
 }
@@ -142,24 +351,50 @@ function drawDungeon() {
       monsterAttackTiles(m).forEach(t => attack.add(t));
     }
   }
-  // 重なったら、ブレスの範囲 > 攻撃範囲 > 視界 の順に優先。見えないマスには出さない
-  const overlay = (key, x, y) => !canSeeTile(x, y) ? "" : danger.has(key) ? " danger" : attack.has(key) ? " atk" : vision.has(key) ? " vis" : "";
+  const aim = bowAimTiles(); // 弓で狙っているあいだ、矢が届く範囲(js/combat.js)
+  // 重なったら、落雷の印 > ブレスの範囲 > 弓の届く範囲 > 攻撃範囲 > 視界 の順に優先。見えないマスには出さない
+  // エクリプスメテオの詠唱中:岩の陰になって助かる床を緑にする
+  const caster = meteorCaster();
+  const safe = (x, y) => caster && map[y][x] === "." && lineHasRock(caster.meteor.x, caster.meteor.y, x, y);
+  const overlay = (key, x, y) => !canSeeTile(x, y) ? ""
+    : lightningMarkAt(x, y) ? " bolt-mark"
+    : safe(x, y) ? " safe"
+    : danger.has(key) ? " danger" : aim.has(key) ? " aim" : attack.has(key) ? " atk" : vision.has(key) ? " vis" : "";
   let html = "";
   for (let y = 0; y < BALANCE.mapHeight; y++) {
     for (let x = 0; x < BALANCE.mapWidth; x++) {
       const tile = tileAt(x, y);
-      const cls = tile && `${tile[1]}${overlay(`${x},${y}`, x, y)}`;
+      let cls = tile && `${tile[1]}${overlay(`${x},${y}`, x, y)}`;
+      // 光っているマス(会心・回避など):クラスを足して、アニメーションを続きから(砕け散っている敵には重ねない)
+      let delay = tile && tile[3];
+      const fx = tile && !tile[3] && canSeeTile(x, y) && tileFxAt(x, y);
+      if (fx) { cls += ` ${fx.cls}`; delay = Math.round(performance.now() - fx.start); }
+      const style = [tile && tile[2] ? `color:${tile[2]}` : "", delay ? `animation-delay:-${delay}ms` : ""].filter(s => s).join(";");
       if (!tile) html += " ";
       // 壁は文字ではなく、マスいっぱいに塗りつぶしたブロックで描く(縦にもすき間なくつながるように)。見えない壁は薄く(mem)
       else if (tile[1] === "wall") html += `<span class="wall-block"> </span>`;
       else if (tile[1] === "wall mem") html += `<span class="wall-block mem"> </span>`;
-      else if (tile[2]) html += `<span class="${cls}" style="color:${tile[2]}">${esc(tile[0])}</span>`;
+      else if (style) html += `<span class="${cls}" style="${style}">${esc(tile[0])}</span>`;
       else html += span(cls, tile[0]);
     }
     html += "\n";
   }
-  setScreen(depthLabel(depth), html, true);
-  setHint([["WASD / ↑↓←→", "移動・攻撃"], ["H", "回復薬"], ["E", "持ち物"], ["Z / .", "待つ"], ["F", `敵の視界・攻撃範囲 ${threatView ? "ON" : "OFF"}`], ["X 長押し", "自害"]]);
+  // 浮かぶ数字は、マップの上に重ねる(map-wrap が位置の基準)
+  setScreen(depthLabel(depth), `<div class="map-wrap">${html}${popupsHTML()}</div>`, true);
+  // エクリプスメテオの詠唱中:落ちるのが近いほど、マップが赤黒くなる
+  const screenEl = document.getElementById("screen");
+  if (caster) {
+    const total = caster.data.ability.meteor.turns;
+    const left = Math.max(0, caster.meteor.at - turn);
+    screenEl.classList.add("meteor-dusk");
+    screenEl.style.setProperty("--dusk", (0.15 + 0.55 * (1 - left / total)).toFixed(2));
+  } else {
+    screenEl.style.removeProperty("--dusk");
+  }
+  if (playerDying) screenEl.classList.add("dying"); // 自分が死んだ:画面の色が抜けていく
+  else announceBigMonsters(); // エリート・墓守・龍が初めて見えたら、名前を大きく出す
+  if (bowAiming) { setHint([["WASD / ↑↓←→", "その方向に撃つ"], ["R / Esc", "やめる"]]); return; }
+  setHint([["WASD / ↑↓←→", "移動・攻撃"], ["R", "弓で撃つ"], ["H", "回復薬"], ["E", "持ち物"], ["Z / .", "待つ"], ["F", `敵の視界・攻撃範囲 ${threatView ? "ON" : "OFF"}`], ["X 長押し", "自害"]]);
 }
 
 // ゲージ(ratio は 0〜1)
@@ -185,6 +420,11 @@ function drawStatus() {
   if (playerWeak) h += span("poison", `衰弱 ${playerWeak.turns}`);
   if (playerSlow) h += span("poison", `鈍足 ${playerSlow.turns}`);
   if (playerBlind) h += span("blind", `盲目 ${playerBlind.turns}`);
+  if (playerConfused) h += span("confuse", `混乱 ${playerConfused.turns}`);
+  if (playerBound) h += span("bind", `拘束 ${playerBound.turns}`);
+  const caster = meteorCaster();
+  if (caster) h += span("down", `エクリプスメテオまで ${Math.max(0, caster.meteor.at - turn)}`); // ベヒーモスの大技の残りターン
+  for (const kind in playerAilments) h += span(AILMENT_TYPES[kind].cls, `${AILMENT_TYPES[kind].name} ${playerAilments[kind]}`);
   if (equipped.shield && equipped.shield.block) h += span("shield", `盾の向き ${facingArrow()}(防${shieldBlockPercent()}%)`);
   if (giveUpProgress() > 0) h += span("down", `自害… ${Math.round(giveUpProgress() * 100)}%`);
   h += `<span class="dim">刻める ${refineCount()}個</span></div>`;
@@ -228,7 +468,7 @@ function drawInventory() {
   // タブの見出し
   let h = `<div class="tabs">`;
   INV_TABS.forEach((tab, i) => {
-    h += `<span class="tab${i === invTab ? " active" : ""}">${esc(tab.name)}</span>`;
+    h += `<span class="tab clickable${i === invTab ? " active" : ""}" onclick="invClickTab(${i})">${esc(tab.name)}</span>`;
   });
   h += `</div>`;
 
@@ -409,6 +649,10 @@ function drawResult() {
     : r.killedBy === "自害"
       ? `<div class="result-title">${esc(depthLabel(r.depth))}で、自ら命を絶った</div><br>`
       : `<div class="result-title">${esc(depthLabel(r.depth))}で ${span("monster", r.killedBy || "何か")} に倒された</div><br>`;
+  // 死んだときは、建った墓の墓碑銘を墓石のような枠で出す(js/grave.js の epitaphLines。次の冒険でこの墓が見つかる)
+  if (!r.cleared && base.grave) {
+    h += `<div class="result-epitaph">${epitaphLines(base.grave).map(l => `<div>${esc(l.trim())}</div>`).join("")}</div>`;
+  }
   h += row("到達した階", `地下${r.depth}階${star(r.newBestDepth)}　${span("dim", `(最高 地下${base.records.bestDepth}階)`)}`);
   h += row("ターン数", r.turns);
   // 倒した敵(種類ごと。monsters.js の順に並べる)
@@ -440,7 +684,7 @@ function drawRefine() {
   // タブ:装備中 / 持ち物(それぞれの数つき)
   h += `<div class="tabs">`;
   REFINE_TABS.forEach((tab, i) => {
-    h += `<span class="tab${i === refineTab ? " active" : ""}">${esc(tab.name)} ${span("dim", `${refineTabCount(i)}`)}</span>`;
+    h += `<span class="tab clickable${i === refineTab ? " active" : ""}" onclick="refineClickTab(${i})">${esc(tab.name)} ${span("dim", `${refineTabCount(i)}`)}</span>`;
   });
   h += `</div>`;
   const worn = REFINE_TABS[refineTab].id === "worn";

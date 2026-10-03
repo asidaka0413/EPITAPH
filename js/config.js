@@ -76,6 +76,17 @@ const BALANCE = {
   ballSpeed: 2,             // 属性の球が1ターンに進むマス数
   monsterSightRange: 8,     // この距離(マス数)以内にプレイヤーがいると追いかけてくる
   blindSightRadius: 2,      // 盲目のとき、プレイヤーが見える範囲(マス数)。その外の敵・物は見えず、一度見た地形だけ薄く残る
+  confuseStumbleChance: 0.5, // 混乱のとき、動く(殴る)方向が、ほかの3方向のどれかにずれる確率
+  bindGuardTurns: 3,         // 拘束が解けたあと、このターン数は、また拘束されない(ずっと動けないのを防ぐ)
+  lowHpRate: 0.2,            // HP がこの割合以下になると、画面のふちが赤く脈打つ(演出)
+  // エクリプスメテオが落ちたあとに続く爆発の演出(効果音 SE_SOUNDS.meteor の「続く爆発」と時刻を合わせる)
+  //   at:落ちてから何ミリ秒後か / shake:揺れの大きさ(small / mid / big / rumble=だんだん弱まる長い地鳴り)/ flash:オレンジの光の強さ(0〜1)
+  meteorAftershocks: [{ at: 600, shake: "mid", flash: 0.55 },
+                      { at: 1300, shake: "mid", flash: 0.4 },
+                      { at: 2200, shake: "rumble", flash: 0.25 }],
+  chillEnemySpeed: 2,        // 凍えている(氷)あいだ、敵の速さが何倍になるか(2 なら、こちらが1回動くあいだに敵が2回動く)
+  shockStunChance: 0.3,      // しびれている(雷)あいだ、行動したあとに体がしびれて、1ターン動けなくなる確率
+  fairyWarpMinDistance: 15,  // いたずら妖精に飛ばされる先は、なるべく今いるところからこのマス数(縦+横)以上離れたところ
   monsterWanderChance: 0.3, // プレイヤーが遠いとき、1ターンにうろつく確率
 
   monsterSpawnChance: 0.8,  // 1部屋に敵がいる確率(スタートと階段の部屋にはいない)
@@ -92,6 +103,8 @@ const BALANCE = {
   hazards: {
     poison: { minDepth: 5,  damage: 8,  damagePerDepth: 0.8, dotDamage: 3, dotDamagePerDepth: 0.3, dotTurns: 2 },
     magma:  { minDepth: 15, damage: 25, damagePerDepth: 1.5, dotDamage: 6, dotDamagePerDepth: 0.4, dotTurns: 2 },
+    ice:    { ailTurns: 2 }, // 凍った床(凛龍のブレスの跡。部屋には置かない):上にいるあいだ凍えが切れない。出たら ailTurns ターンで抜ける
+    fog:    { dotDamage: 12, dotDamagePerDepth: 0.5, dotTurns: 3, blindTurns: 2 }, // 毒の霧(瘴龍の球の跡):中にいるあいだ盲目と毒(ダメージは毒だけ)
   },
   chestMonsterGearChance: 0.25, // 宝箱の中身が、床の装備ではなく「この階に出る敵の固有装備」になる確率
   potionHeal: 100,          // 回復薬1個で回復する量の最低値
@@ -169,6 +182,19 @@ const BALANCE = {
 
   shieldBlockMax: 90,     // 盾で防ぐ% の上限(ゴブリン一族のセット効果などで増えても、ここまで)
   materialRatio: 1 / 5,   // 刻んだとき、装備の性能のうち刻印になる割合
+  weaponKindBonus: 0.1,   // 武器の刻印が、着けている武器と同じジャンル(WEAPON_KINDS)なら、刻印の数値がこの割合だけ増える
+  // 武器のジャンルごとの攻撃の形(js/combat.js の tryMove)
+  sneakHits: 2,           // 不意打ち(気づいていない敵を殴る)の攻撃回数
+  daggerSneakHits: 3,     // 短剣:不意打ちの攻撃回数
+  fangHits: 2,            // 爪牙:1回殴ると、この回数だけ攻撃する(会心はそれぞれ判定)
+  fangRate: 0.5,          // 爪牙:1回あたりのダメージの割合
+  spearPierceRate: 0.5,   // 槍:殴った敵の後ろ(2マス先)の敵へのダメージの割合
+  axeSideRate: 0.7,       // 斧:殴った敵の左右(こちらのとなりのマス)の敵へのダメージの割合
+  scytheRate: 0.5,        // 鎌:殴った敵のほか、自分の周り8マスの敵へのダメージの割合
+  bowRange: 5,            // 弓:R で撃って届く距離(マス。縦横まっすぐ・壁で止まる)
+  bowShotRate: 0.8,       // 弓:2マス先の敵に撃ったときのダメージの割合
+  bowFalloff: 0.1,        // 弓:そこから1マス遠くなるごとに下がる割合(3マス 0.7 / 4マス 0.6 / 5マス 0.5)
+  bowMeleeRate: 0.5,      // 弓:となりの敵を殴る・撃つときのダメージの割合(不意打ちはある)
   // 床の装備などから刻んだ刻印のレア度(名前が変わる)。刻んだ装備の個体差(各ステータスの±%)の平均で決める
   //   上から順に見て、平均が minRoll(%)以上の最初のものになる。名前は「word + 部位 + の刻印」(例:輝く胴の刻印)
   //   呪われた装備の基礎値の上乗せ(+50%)は関係なく、個体差だけで決める
@@ -221,7 +247,186 @@ const BALANCE = {
   logMaxLines: 50,        // ログに残しておく行数
   moveRepeatMs: 60,       // 移動キーを押しっぱなしにしたとき、何ミリ秒に1回動くか(大きいほどゆっくり)
   giveUpHoldMs: 1500,     // X キーを何ミリ秒押し続けると自害するか
+  engraveToTownMs: 900,   // 最後に刻んだあと、拠点へ移るまでのミリ秒(刻んだ光 fx-engrave を見せるため。style.css の 0.9s と同じ)
   touchRepeatDelayMs: 300, // スマホの十字キー:押しっぱなしにしてから、続けて動き始めるまでのミリ秒(そのあとは moveRepeatMs ごと)
+
+  // 図鑑の敵:倒した数で、分かることが増える(js/townscreens.js の dexDetailHTML)
+  //   [1, 5, 20] → 1体:強さ(★)・速さ・群れ・一族 / 5体:特徴・素材・固有装備 / 20体:くわしい数字・出る階
+  dexRevealKills: [1, 5, 20],
+  // 図鑑の敵の強さの★(1〜5個)。その敵が出始める階で、同じ階に出る敵の平均の何倍か
+  //   この値より小さければ ★ / ★★ / ★★★ / ★★★★、どれより大きければ ★★★★★
+  dexStarRatios: [0.6, 0.85, 1.2, 1.7],
+
+  // 効果音(js/sound.js。音の形は下の SE_SOUNDS)
+  seVolumeDefault: 50,    // 最初の音量(0〜100)
+  seVolumeStep: 10,       // 設定画面で1回に変わる音量
+  seMasterGain: 0.3,      // 全体の大きさ(音量100のとき。大きすぎて割れないように小さめ)
+  seRepeatGapMs: 40,      // 同じ音をこのミリ秒以内にもう一度鳴らさない(敵がたくさんいるとき、重なってうるさくならないように)
+};
+
+// ==================== 効果音の形 ====================
+// 音のファイルは使わず、js/sound.js がこの表からその場で音を作る(暗く不気味なレトロの音)
+// 1つの音は「音のかけら」の並び。かけら1つの形:
+//   wave:音の種類(sine=丸い / triangle=やわらかい / square=ファミコンっぽい / sawtooth=ざらざら / noise=ザッという雑音)
+//   freq:始まりの音の高さ(Hz。大きいほど高い。440 = ラ) / to:(省略できる)終わりの高さ。だんだんこの高さに変わる
+//   at:鳴り始め(秒。0 ならすぐ) / dur:長さ(秒) / vol:大きさ(0〜1)
+//   lp:(省略できる)この高さ(Hz)より上を削って、こもった音にする。小さいほど暗くこもる
+//   少しだけずらした高さ(110 と 113 など)を重ねると、音がうなって不気味になる
+const SE_SOUNDS = {
+  // 攻撃が当たる「ドスッ」(こもった肉を打つ音)
+  //   (何度も鳴るので、おとなしめ。小さく・短く・こもらせている)
+  hit:     [{ wave: "noise", lp: 600, at: 0, dur: 0.05, vol: 0.35 },
+            { wave: "sine", freq: 120, to: 55, at: 0, dur: 0.07, vol: 0.3 }],
+  // 会心の一撃「ザグッ」(骨まで届くような重い音。ふつうより少しだけ強い)
+  crit:    [{ wave: "noise", lp: 1200, at: 0, dur: 0.09, vol: 0.45 },
+            { wave: "sawtooth", freq: 150, to: 45, at: 0, dur: 0.1, lp: 500, vol: 0.18 },
+            { wave: "sine", freq: 90, to: 40, at: 0.02, dur: 0.15, vol: 0.4 }],
+  // ダメージを受ける「ズン」(低いうなり。おとなしめ)
+  hurt:    [{ wave: "sawtooth", freq: 100, to: 50, at: 0, dur: 0.14, lp: 300, vol: 0.25 },
+            { wave: "noise", lp: 250, at: 0, dur: 0.07, vol: 0.25 }],
+  // アイテムを拾う「カチッ…コト」(乾いた音)
+  pickup:  [{ wave: "square", freq: 1400, at: 0, dur: 0.015, lp: 2500, vol: 0.25 },
+            { wave: "triangle", freq: 180, to: 150, at: 0.03, dur: 0.08, vol: 0.5 }],
+  // レベルアップ:ゆっくり上がる不穏な和音(ラ・ド・ミ♭・ラ。減和音)。最後はうなりながら消える
+  levelup: [{ wave: "triangle", freq: 220, at: 0, dur: 0.18, lp: 1200, vol: 0.5 },
+            { wave: "triangle", freq: 262, at: 0.14, dur: 0.18, lp: 1200, vol: 0.5 },
+            { wave: "triangle", freq: 311, at: 0.28, dur: 0.18, lp: 1200, vol: 0.5 },
+            { wave: "triangle", freq: 440, at: 0.42, dur: 0.9, lp: 1200, vol: 0.45 },
+            { wave: "triangle", freq: 446, at: 0.42, dur: 0.9, lp: 1200, vol: 0.3 }],
+  // 階段を降りる「ゴト…ゴト…ゴト」(暗い奥へ下りていく足音)
+  stairs:  [{ wave: "noise", lp: 250, at: 0, dur: 0.09, vol: 0.7 },
+            { wave: "sine", freq: 110, to: 70, at: 0, dur: 0.12, vol: 0.5 },
+            { wave: "noise", lp: 220, at: 0.22, dur: 0.09, vol: 0.6 },
+            { wave: "sine", freq: 98, to: 62, at: 0.22, dur: 0.12, vol: 0.45 },
+            { wave: "noise", lp: 180, at: 0.44, dur: 0.1, vol: 0.5 },
+            { wave: "sine", freq: 82, to: 50, at: 0.44, dur: 0.18, vol: 0.4 }],
+  // 死ぬ「ゴーン…」(弔いの鐘。うなりながら長く響く)
+  death:   [{ wave: "sine", freq: 110, to: 104, at: 0, dur: 2.6, vol: 0.7 },
+            { wave: "sine", freq: 113, to: 107, at: 0, dur: 2.6, vol: 0.4 },
+            { wave: "triangle", freq: 304, at: 0, dur: 1.2, lp: 1500, vol: 0.25 },
+            { wave: "triangle", freq: 594, at: 0, dur: 0.6, lp: 1500, vol: 0.12 },
+            { wave: "noise", lp: 150, at: 0, dur: 1.5, vol: 0.3 }],
+  // 自分の墓に初めて乗った「カーン…」(遠くで鳴る、小さく短い弔いの鐘。death より高く・小さく)
+  grave:   [{ wave: "sine", freq: 220, to: 216, at: 0, dur: 1.8, vol: 0.3 },
+            { wave: "sine", freq: 226, to: 222, at: 0, dur: 1.8, vol: 0.18 },
+            { wave: "triangle", freq: 608, at: 0, dur: 0.8, lp: 1500, vol: 0.1 },
+            { wave: "triangle", freq: 1188, at: 0, dur: 0.4, lp: 1800, vol: 0.04 }],
+  // 設定画面で音量を変えたときのお試し「コッ」
+  test:    [{ wave: "triangle", freq: 330, to: 280, at: 0, dur: 0.07, vol: 0.5 }],
+
+  // ---- 宝箱・ミミック(js/treasure.js) ----
+  // 宝箱を開ける「ギィ…コト」(古いふたがきしんで、落ちる)
+  chest:   [{ wave: "sawtooth", freq: 70, to: 95, at: 0, dur: 0.35, lp: 500, vol: 0.25 },
+            { wave: "sawtooth", freq: 72, to: 98, at: 0, dur: 0.35, lp: 500, vol: 0.15 },
+            { wave: "noise", lp: 300, at: 0.38, dur: 0.08, vol: 0.5 },
+            { wave: "triangle", freq: 160, to: 120, at: 0.38, dur: 0.12, vol: 0.45 }],
+  // ミミックだった「ガチン!」(かみつく音のあと、濁った低いうなり)
+  mimic:   [{ wave: "noise", lp: 2500, at: 0, dur: 0.05, vol: 0.6 },
+            { wave: "square", freq: 900, to: 300, at: 0, dur: 0.04, lp: 2000, vol: 0.2 },
+            { wave: "sawtooth", freq: 65, at: 0.04, dur: 0.5, lp: 350, vol: 0.35 },
+            { wave: "sawtooth", freq: 69, at: 0.04, dur: 0.5, lp: 350, vol: 0.3 }],
+
+  // ---- 龍の技(属性ごと。名前は skill_ + 属性。js/enemyskills.js) ----
+  // 火「ゴウッ」(ブレス・爆炎・マグマ)
+  skill_fire:    [{ wave: "noise", lp: 800, at: 0, dur: 0.7, vol: 0.6 },
+                  { wave: "sawtooth", freq: 90, to: 45, at: 0, dur: 0.6, lp: 400, vol: 0.3 }],
+  // 氷「キーン…」(ブレス・氷の壁・凍てつく風。割れる音のあと、冷たい響き)
+  skill_ice:     [{ wave: "noise", lp: 2500, at: 0, dur: 0.06, vol: 0.4 },
+                  { wave: "triangle", freq: 1180, to: 1100, at: 0, dur: 0.9, lp: 3000, vol: 0.12 },
+                  { wave: "triangle", freq: 1195, to: 1112, at: 0, dur: 0.9, lp: 3000, vol: 0.1 },
+                  { wave: "sine", freq: 80, to: 60, at: 0, dur: 0.5, vol: 0.35 }],
+  // 雷「バリッ…ゴロゴロ」(ブレス・落雷・電光石火)
+  skill_thunder: [{ wave: "noise", at: 0, dur: 0.1, vol: 0.5 },
+                  { wave: "square", freq: 1800, to: 150, at: 0, dur: 0.1, lp: 3000, vol: 0.12 },
+                  { wave: "noise", lp: 180, at: 0.08, dur: 1.0, vol: 0.6 },
+                  { wave: "sawtooth", freq: 55, to: 40, at: 0.08, dur: 1.0, lp: 200, vol: 0.3 }],
+  // 毒「ジュウ…」(ブレス・脱皮。泡立つような、うなる音)
+  skill_poison:  [{ wave: "noise", lp: 1800, at: 0, dur: 0.6, vol: 0.25 },
+                  { wave: "sine", freq: 150, to: 95, at: 0, dur: 0.7, vol: 0.3 },
+                  { wave: "sine", freq: 154, to: 98, at: 0, dur: 0.7, vol: 0.25 }],
+
+  // ---- ベヒーモスの技(js/enemyskills.js) ----
+  // 地響き「ドォン」
+  quake:   [{ wave: "noise", lp: 120, at: 0, dur: 0.8, vol: 0.8 },
+            { wave: "sine", freq: 60, to: 30, at: 0, dur: 0.8, vol: 0.6 }],
+  // 咆哮「グオォォ…」
+  roar:    [{ wave: "sawtooth", freq: 110, to: 70, at: 0, dur: 1.0, lp: 600, vol: 0.35 },
+            { wave: "sawtooth", freq: 116, to: 73, at: 0, dur: 1.0, lp: 600, vol: 0.3 },
+            { wave: "noise", lp: 500, at: 0, dur: 0.9, vol: 0.3 }],
+  // エクリプスメテオの詠唱が始まる「ヴォォン…」(地の底からのうなり)
+  meteorOmen: [{ wave: "sine", freq: 55, to: 50, at: 0, dur: 2.0, vol: 0.6 },
+               { wave: "sine", freq: 58, to: 52, at: 0, dur: 2.0, vol: 0.5 },
+               { wave: "sawtooth", freq: 110, to: 100, at: 0, dur: 2.0, lp: 250, vol: 0.2 }],
+  // エクリプスメテオが落ちる「ズドドォォン…ゴゴゴ…」(大爆発のあと、爆発が何度も続き、地の底まで長く響く)
+  meteor:  [{ wave: "noise", lp: 5000, at: 0, dur: 0.25, vol: 0.8 },                      // 最初の「バァン!」
+            { wave: "noise", lp: 250, at: 0, dur: 4.0, vol: 1.0 },                        // 長い爆風
+            { wave: "sine", freq: 90, to: 20, at: 0, dur: 3.5, vol: 0.8 },                // 腹に響く「ドォォン」
+            { wave: "sawtooth", freq: 55, to: 25, at: 0, dur: 3.0, lp: 200, vol: 0.35 },  // 2つずらして、うなるように
+            { wave: "sawtooth", freq: 58, to: 27, at: 0, dur: 3.0, lp: 200, vol: 0.3 },
+            { wave: "noise", lp: 1500, at: 0.2, dur: 2.0, vol: 0.25 },                    // 岩が砕けて降る「ザァァ」
+            { wave: "noise", lp: 600, at: 0.6, dur: 0.7, vol: 0.7 },                      // 続く爆発(1回目)
+            { wave: "sine", freq: 70, to: 30, at: 0.6, dur: 0.8, vol: 0.5 },
+            { wave: "noise", lp: 450, at: 1.3, dur: 0.9, vol: 0.6 },                      // 続く爆発(2回目)
+            { wave: "sine", freq: 60, to: 28, at: 1.3, dur: 1.0, vol: 0.45 },
+            { wave: "noise", lp: 300, at: 2.2, dur: 1.5, vol: 0.5 },                      // 続く爆発(3回目・遠くなる)
+            { wave: "sine", freq: 40, to: 18, at: 0.5, dur: 4.5, vol: 0.5 }],             // 最後まで残る地鳴り
+
+  // ---- 実績・刻む ----
+  // 実績を取った「チリン…チリン」(暗めの小さな鐘が2つ。2つ目は不穏な音程で下がる。js/screens.js)
+  achieve: [{ wave: "triangle", freq: 880, at: 0, dur: 0.6, lp: 2500, vol: 0.25 },
+            { wave: "triangle", freq: 887, at: 0, dur: 0.6, lp: 2500, vol: 0.15 },
+            { wave: "triangle", freq: 622, at: 0.2, dur: 0.9, lp: 2500, vol: 0.25 },
+            { wave: "triangle", freq: 627, at: 0.2, dur: 0.9, lp: 2500, vol: 0.15 }],
+  // 刻む「カン…カン」(石に彫りこむ音。js/items.js)
+  engrave: [{ wave: "noise", lp: 3000, at: 0, dur: 0.03, vol: 0.5 },
+            { wave: "triangle", freq: 1050, to: 1000, at: 0, dur: 0.25, lp: 2500, vol: 0.2 },
+            { wave: "noise", lp: 3000, at: 0.18, dur: 0.03, vol: 0.45 },
+            { wave: "triangle", freq: 940, to: 900, at: 0.18, dur: 0.3, lp: 2500, vol: 0.18 },
+            { wave: "sine", freq: 220, at: 0.18, dur: 0.5, vol: 0.15 }],
+
+  // ---- 状態異常にかかった(種類ごと。名前は ail_ + 種類。js/ailments.js) ----
+  // 毒「ゴポッ」(泡がはじける)
+  ail_poison:  [{ wave: "sine", freq: 300, to: 120, at: 0, dur: 0.15, vol: 0.4 },
+                { wave: "sine", freq: 260, to: 100, at: 0.12, dur: 0.15, vol: 0.3 }],
+  // やけど「ジュッ」
+  ail_burn:    [{ wave: "noise", lp: 2500, at: 0, dur: 0.18, vol: 0.35 },
+                { wave: "sawtooth", freq: 200, to: 90, at: 0, dur: 0.15, lp: 800, vol: 0.15 }],
+  // 鈍足「ズゥン」(音がのろく沈む)
+  ail_slow:    [{ wave: "triangle", freq: 220, to: 80, at: 0, dur: 0.45, lp: 800, vol: 0.4 }],
+  // 盲目「フッ」(明かりが消える)
+  ail_blind:   [{ wave: "noise", lp: 500, at: 0, dur: 0.35, vol: 0.3 },
+                { wave: "sine", freq: 400, to: 150, at: 0, dur: 0.35, vol: 0.2 }],
+  // 混乱「ウワン」(音がゆらぐ)
+  ail_confuse: [{ wave: "triangle", freq: 300, to: 420, at: 0, dur: 0.12, vol: 0.3 },
+                { wave: "triangle", freq: 420, to: 280, at: 0.12, dur: 0.12, vol: 0.3 },
+                { wave: "triangle", freq: 280, to: 400, at: 0.24, dur: 0.15, vol: 0.25 }],
+  // 拘束「ギュッ」(締めつけられる)
+  ail_bind:    [{ wave: "sawtooth", freq: 90, to: 140, at: 0, dur: 0.2, lp: 600, vol: 0.3 },
+                { wave: "noise", lp: 400, at: 0.18, dur: 0.06, vol: 0.4 }],
+  // 凍え「ピキッ」
+  ail_chill:   [{ wave: "triangle", freq: 1500, to: 1300, at: 0, dur: 0.08, lp: 3000, vol: 0.2 },
+                { wave: "noise", lp: 3000, at: 0, dur: 0.04, vol: 0.25 },
+                { wave: "triangle", freq: 700, at: 0.05, dur: 0.3, lp: 2000, vol: 0.12 }],
+  // しびれ「ビリッ」
+  ail_shock:   [{ wave: "square", freq: 120, at: 0, dur: 0.2, lp: 1500, vol: 0.2 },
+                { wave: "square", freq: 127, at: 0, dur: 0.2, lp: 1500, vol: 0.15 },
+                { wave: "noise", lp: 3000, at: 0, dur: 0.08, vol: 0.25 }],
+  // 衰弱「スゥ…」(力が抜けていく)
+  ail_weak:    [{ wave: "sine", freq: 330, to: 110, at: 0, dur: 0.6, vol: 0.35 },
+                { wave: "sine", freq: 335, to: 112, at: 0, dur: 0.6, vol: 0.25 }],
+};
+
+// 効果音の表示名(デバッグの「サウンドテスト」画面に出す。js/debug.js)
+//   ここにない音は、SE_SOUNDS の名前(hit など)のまま出る
+const SE_NAMES = {
+  hit: "攻撃が当たる", crit: "会心の一撃", hurt: "ダメージを受ける", pickup: "拾う",
+  levelup: "レベルアップ", stairs: "階段を降りる", death: "死ぬ", grave: "自分の墓に乗る", test: "設定のお試し",
+  chest: "宝箱を開ける", mimic: "ミミックだった",
+  skill_fire: "龍の技(火)", skill_ice: "龍の技(氷)", skill_thunder: "龍の技(雷)", skill_poison: "龍の技(毒)",
+  quake: "ベヒーモスの地響き", roar: "ベヒーモスの咆哮", meteorOmen: "メテオの詠唱", meteor: "メテオが落ちる",
+  achieve: "実績を取った", engrave: "刻む",
+  ail_poison: "毒になった", ail_burn: "やけどになった", ail_slow: "鈍足になった", ail_blind: "盲目になった",
+  ail_confuse: "混乱した", ail_bind: "拘束された", ail_chill: "凍えた", ail_shock: "しびれた", ail_weak: "衰弱した",
 };
 
 // ==================== レア度(謎の塊を鑑定して出る装備) ====================
@@ -254,6 +459,21 @@ const ITEM_TYPES = {
   feet:    { name: "足",         symbol: "[", cls: "armor",   slots: ["feet"],                 resource: "plant" },
   ring:    { name: "指輪",       symbol: "=", cls: "ring",    slots: ["ring1", "ring2"],       resource: "ore" },
   earring: { name: "イヤリング", symbol: '"', cls: "earring", slots: ["earring1", "earring2"], resource: "plant" },
+};
+
+// 武器のジャンル(equipment.js の武器の kind に書くもの)
+//   武器の刻印は、着けている武器と同じジャンルなら数値が weaponKindBonus だけ増える
+//   ここに書いた順番が、図鑑などで並ぶ順番になる
+const WEAPON_KINDS = {
+  sword:  { name: "剣" },
+  dagger: { name: "短剣" },
+  spear:  { name: "槍" },
+  axe:    { name: "斧" },
+  blunt:  { name: "鈍器" },
+  bow:    { name: "弓" },
+  staff:  { name: "杖" },
+  scythe: { name: "鎌" },
+  fang:   { name: "爪牙" },
 };
 
 // 素材の系統(monsters.js の material に書くもの)。死んでも拠点に持ち帰れる

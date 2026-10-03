@@ -11,7 +11,22 @@ const DEBUG_ACTIONS = [
   { name: "素材 全種類 +100", when: "any", run: () => { for (const id in RESOURCE_TYPES) base.resources[id] += 100; } },
   { name: "ゴールド +1000", when: "any", run: () => { base.gold += 1000; } },
   { name: "酒場の依頼を入れ替える", when: "any", run: () => { refreshQuestBoard(true); addLog("[デバッグ] 酒場の掲示板を新しくした"); } },
+  { name: "サウンドテスト", when: "any", run: () => { openSoundTest(); } },
+  { name: "テスト層に入る(敵のいない大部屋)", when: "any", run: () => {
+    // 何階の強さにするかを聞く(拠点からなら、新しく冒険を始めてから入る)
+    if (screenMode !== "town" && screenMode !== "dungeon") { addLog("[デバッグ] 拠点かダンジョンで押してください"); return; }
+    const input = prompt(`何階の強さのテスト層に入る？(1〜${BALANCE.goalDepth})`, String(screenMode === "town" ? 90 : depth));
+    const d = Math.floor(Number(input));
+    if (!input || !(d >= 1)) return;
+    if (screenMode === "town") startNewRun();
+    enterTestFloor(Math.min(BALANCE.goalDepth, d));
+  } },
   { name: "HP全回復", when: "dungeon", run: () => { playerHP = maxHP; } },
+  { name: "近い敵に最大HPの10%ダメージ", when: "dungeon", run: () => { debugHurtNearest(0.1); } },
+  { name: "近い敵に最大HPの50%ダメージ", when: "dungeon", run: () => { debugHurtNearest(0.5); } },
+  { name: "近い敵に最大HPの90%ダメージ", when: "dungeon", run: () => { debugHurtNearest(0.9); } },
+  { name: "凍える(10ターン)", when: "dungeon", run: () => { ailPlayer("chill", 10); } },
+  { name: "しびれる(10ターン)", when: "dungeon", run: () => { ailPlayer("shock", 10); } },
   { name: "選んだ敵を近くに出す", when: "dungeon", run: () => {
     // 横の一覧で選んだ敵を1体、プレイヤーから少し離れた床に出す
     const data = monsterList.find(m => m.id === debugSpawnId) || monsterList[0];
@@ -60,10 +75,105 @@ const DEBUG_ACTIONS = [
 
 let debugSpawnId = null; // 「選んだ敵を近くに出す」で出す敵の id(一覧で選んだもの)
 
+// いちばん近い敵1体に、最大HPの rate(0.1 なら 10%)のダメージを与える(ダメージの調整・ベヒーモスのメテオを試す用)
+//   道具が当たったときと同じく、ミミックは正体を現し、眠っている敵・襲ってこない龍は怒る。ターンは進まない
+function debugHurtNearest(rate) {
+  let target = null, best = Infinity;
+  for (const m of monsters) {
+    const d = Math.max(Math.abs(m.x - px), Math.abs(m.y - py));
+    if (d < best) { best = d; target = m; }
+  }
+  if (!target) { addLog("[デバッグ] 敵がいない"); return; }
+  if (target.disguised) revealMimic(target, false);
+  if (target.dormant) wakeGuardian(target, "攻撃されて、");
+  provokeMonster(target);
+  const dmg = Math.max(1, Math.round(target.maxHp * rate));
+  const name = monsterName(target);
+  target.hp -= dmg;
+  addPopup(target.x, target.y, dmg, "pop-dmg"); // 演出:ダメージの数字が浮かぶ
+  meteorGuard(target); // ベヒーモス:HP 5%以下でエクリプスメテオ(詠唱中は倒れない)
+  if (target.hp <= 0) killMonster(target, `[デバッグ] ${name}に${dmg}のダメージ！ ${name}を倒した！`);
+  else addLog(`[デバッグ] ${name}に${dmg}のダメージ！(残り HP ${target.hp}/${target.maxHp})`);
+}
+
 // デバッグモードは、アドレスの最後に ?debug を付けて開いたときだけ使える(遊ぶ人がうっかり入れないように)
 //   例:index.html?debug / https://asidaka0413.github.io/EPITAPH/?debug
 //   付けずに開くと、設定にも出ず、セーブで ON になっていても効かない
 const DEBUG_ALLOWED = new URLSearchParams(location.search).has("debug");
+
+// ==================== テスト層 ====================
+// 敵・罠・宝箱・床の装備のない、大部屋1つだけの階(デバッグ用)。強さは d 階のもの
+//   「選んだ敵を近くに出す」で好きな敵と戦える。右の端に階段があり、降りるとふつうの次の階へ
+function enterTestFloor(d) {
+  depth = d;
+  floorRoute = STAIR_ROUTES[0];
+  const W = BALANCE.mapWidth, H = BALANCE.mapHeight;
+  map = [];
+  for (let y = 0; y < H; y++) {
+    const row = [];
+    for (let x = 0; x < W; x++) row.push(x >= 2 && x < W - 2 && y >= 2 && y < H - 2 ? "." : "#");
+    map.push(row);
+  }
+  seenMap = map.map(row => row.map(() => false));
+  px = 4;
+  py = Math.floor(H / 2);
+  stairs = { x: W - 4, y: py };
+  monsters = [];
+  items = [];
+  chests = [];
+  flames = [];
+  balls = [];
+  deathBlasts = [];
+  corpses = [];
+  lightningMarks = [];
+  deathFx = [];
+  tileFx = [];
+  popups = [];
+  graveSpot = null;
+  placeHazards([]);       // ダメージ床なし(しばらくで消える床・氷の壁・岩石も空に)
+  placeTreasureSpots([]); // 宝の印なし
+  screenMode = "dungeon";
+  addLog(`[デバッグ] テスト層(地下${d}階の強さ)に入った。「選んだ敵を近くに出す」で敵を出せる`);
+}
+
+// ==================== サウンドテスト ====================
+// 効果音(config.js の SE_SOUNDS)を1つずつ選んで鳴らす画面(デバッグ用)
+//   並びは SE_SOUNDS に書いた順。名前は SE_NAMES。Esc で開く前の画面に戻る
+let soundTestCursor = 0;   // 選んでいる音の番号
+let soundTestBack = null;  // 開く前の screenMode(戻るときに使う)
+
+function openSoundTest() {
+  if (screenMode === "soundtest") return;
+  soundTestBack = screenMode;
+  screenMode = "soundtest";
+}
+
+function closeSoundTest() {
+  screenMode = soundTestBack || "town";
+  soundTestBack = null;
+  render();
+}
+
+function drawSoundTest() {
+  const names = Object.keys(SE_SOUNDS);
+  let h = "";
+  if (!seEnabled()) h += `<div class="note">効果音が OFF になっている(拠点の設定で ON にすると鳴る)</div>`;
+  h += `<div class="note">音量 ${base.settings.seVolume ?? BALANCE.seVolumeDefault}(拠点の設定で変えられる)</div>`;
+  names.forEach((n, i) => {
+    h += gridRow(i === soundTestCursor, "12em 1fr", [esc(SE_NAMES[n] || n), span("dim", n)]);
+  });
+  setScreen("サウンドテスト", h, false);
+  setHint([["↑↓", "選ぶ"], ["Enter / Space", "鳴らす"], ["Esc / Q", "もどる"]]);
+}
+
+function soundTestKey(e) {
+  const names = Object.keys(SE_SOUNDS);
+  if (e.key === "ArrowUp") soundTestCursor = Math.max(0, soundTestCursor - 1);
+  else if (e.key === "ArrowDown") soundTestCursor = Math.min(names.length - 1, soundTestCursor + 1);
+  else if (e.key === "Enter") playSE(names[soundTestCursor]);
+  else if (e.key === "Escape") { closeSoundTest(); return; }
+  render();
+}
 
 // デバッグモードが効いているか
 function debugOn() {

@@ -153,7 +153,10 @@ function toolDamage(m, dmg, text, sneak) {
   if (m.disguised) revealMimic(m, false); // 宝箱に化けたミミック:道具を当てると、噛みつかずに正体を現す
   meetMonster(m.data.id);
   if (m.dormant) wakeGuardian(m, "攻撃されて、");
+  provokeMonster(m); // 襲ってこなかった龍は、道具が当たっても怒る
   m.hp -= dmg;
+  addPopup(m.x, m.y, dmg, "pop-dmg"); // 演出:ダメージの数字が浮かぶ
+  meteorGuard(m); // ベヒーモス:HP 5%以下でエクリプスメテオ(詠唱中は倒れない)
   runStats.damageDealt += dmg;
   if (dmg > runStats.bestHit) { runStats.bestHit = dmg; runStats.bestHitCrit = false; }
   if (m.hp <= 0) {
@@ -168,7 +171,7 @@ function toolDamage(m, dmg, text, sneak) {
 
 // 投げナイフが敵に当たった(会心あり。甲冑騎士などの鎧で減る。気づいていなければ不意打ちで2倍)
 function knifeHit(m) {
-  const sneak = !m.hunting;
+  const sneak = !m.hunting && !m.calm; // 襲ってこない龍はこちらを見ているので、不意打ちにならない
   const s = getPlayerStats();
   let dmg = rollDamage(s.atk * BALANCE.knifePowerRate * weakMultiplier() * buffAtkMultiplier());
   const isCrit = rollCrit(s);
@@ -182,7 +185,7 @@ function knifeHit(m) {
 // 火炎瓶が (x, y) で割れた:周り3×3の敵全部に火のダメージ(プレイヤーは巻きこまない)
 function firebombBurst(x, y) {
   const s = getPlayerStats();
-  const targets = monsters.filter(m => Math.abs(m.x - x) <= 1 && Math.abs(m.y - y) <= 1);
+  const targets = monsters.filter(m => Math.abs(m.x - x) <= 1 && Math.abs(m.y - y) <= 1 && !inWall(m)); // 壁の中のゴーストには届かない
   addLog(targets.length > 0 ? "火炎瓶が割れて、炎が広がった！" : "火炎瓶が割れて、炎が広がった…が、誰も巻きこまれなかった");
   for (const m of targets) {
     if (!monsters.includes(m)) continue; // 途中でいなくなった敵(術師が倒れて崩れた呼び出しなど)

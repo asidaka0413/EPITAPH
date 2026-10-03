@@ -13,6 +13,7 @@
 //           エリートの金色・墓守の薄い金色は、この色より優先される。一族のない敵は monsters.js の color のまま
 //   sets  :セット効果。count 個そろうと効く(sets: [] ならセット効果なしの一族。刻印の札と、依頼の「一族討伐」には出る)。desc:説明 / 効果(下のどれか。数値はすべて仮)
 //             stats        … ステータスが上がる(例:{ agl: 60 })
+//             statRates    … ステータスが割合で上がる(例:{ atk: 0.1 } なら ATK+10%。ほかの全部を足したあとの数値にかける)
 //             shieldBlock  … 盾で防ぐ% が増える(例:10 なら +10%)
 //             alarmImmune  … ゴブリンの呼び子の角笛が効かない(吹かれても仲間が集まらない)
 //             poisonHalf   … 毒が半分のターンで抜ける
@@ -60,12 +61,23 @@ const CLAN_DATA = [
     ],
   },
   {
-    // 竜より格が上の「龍」の一族も、いずれ別に作る予定
+    // 竜より格が上の「龍」の一族は、下の elderdragons
     id: "dragons", name: "竜", short: "竜", color: "#e8603c", // 赤橙系
     colors: { salamander: "#ff7a50", lizardman: "#d05a3a", wyvern: "#f09060", drake: "#ff4a3a", dragonkin: "#e07848" },
     sets: [
       { count: 2, desc: "やけどにならない", burnImmune: true },
       { count: 4, desc: "ブレスのダメージが半分(属性に関係なく)", damageCut: [{ category: "breath", rate: 0.5 }] },
+    ],
+  },
+  {
+    // 竜より格が上の一族。中層の後半に、1つの階に1体だけ、まれに出る。氷・雷などの属性を使う
+    //   敵ごとの色(colors)は、白銀に属性の色を少しだけ混ぜる(記号はどれも D なので、色で見分ける)
+    id: "elderdragons", name: "龍", short: "龍", color: "#e6eaf2", // 白銀系
+    colors: { rinryu: "#d8f0ff", hekiryu: "#fff2b0", enryu: "#ffd0b8", shoryu: "#e4d0f4" },
+    sets: [
+      { count: 2, desc: "ATK+10%・HP+10%", statRates: { atk: 0.1, hp: 0.1 } },
+      { count: 4, desc: "火・毒・氷・雷の属性のダメージを30%減らす(毒・やけどにも効く)",
+        damageCut: [{ element: "fire", rate: 0.3 }, { element: "poison", rate: 0.3 }, { element: "ice", rate: 0.3 }, { element: "thunder", rate: 0.3 }] },
     ],
   },
   {

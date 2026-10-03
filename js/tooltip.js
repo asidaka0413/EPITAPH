@@ -94,13 +94,38 @@ function tooltipHTML(x, y) {
   const m = monsterAt(x, y);
   if (m && m.disguised) return chestTipHTML(m.fakeName); // 宝箱に化けたミミック:名前だけが少しおかしい
   if (m) return monsterTipHTML(m);
+  const iw = iceWallAt(x, y);
+  if (iw) {
+    return tipBox(span("ice-wall", "# 氷の壁"), [
+      `凛龍が立てた壁。あと${iw.turns}ターンで溶ける`,
+      span("tip-sub", "ぶつかると叩き割れる(1ターン使う)"),
+    ]);
+  }
+  if (rockAt(x, y)) {
+    return tipBox(span("rock", "# 岩石"), [
+      "ベヒーモスの地響きで降ってきた岩。通れない",
+      span("tip-sub", "エクリプスメテオのときは、落下地点から見てこの岩の陰(緑のマス)にいれば助かる。メテオのあとで砕ける"),
+    ]);
+  }
+  const caster = meteorCaster();
+  if (caster && x === caster.meteor.x && y === caster.meteor.y) {
+    return tipBox(span("meteor-mark", "* エクリプスメテオの落下地点"), [
+      `あと${Math.max(0, caster.meteor.at - turn)}ターンで落ちてきて、マップ全体を焼き尽くす(即死)`,
+      span("tip-sub", "ここから見て岩石の陰(緑のマス)に隠れろ。階段で逃げてもよい"),
+    ]);
+  }
   const ball = ballAt(x, y);
   if (ball) {
     const el = ELEMENT_DATA[ball.element];
     return tipBox(`<span style="color:${el.color}">• ${esc(el.ballName)}</span>`, [
-      `${esc(ball.owner)}が放った${esc(el.name)}属性の球。まっすぐ飛んで、壁に当たると消える`,
+      `${esc(ball.owner)}が放った${esc(el.name)}属性の球。まっすぐ飛んで、壁に当たると消える`
+        + (ball.bounces > 0 ? `(あと${ball.bounces}回は跳ね返る)` : ""),
       span("tip-sub", "横に動けばよけられる。回避はできないが、盾と DEF で減らせる"),
     ]);
+  }
+  const lm = lightningMarkAt(x, y);
+  if (lm && !monsterAt(x, y)) {
+    return tipBox(span("down", "落雷の印！"), [span("tip-sub", `${esc(lm.owner)}の雷が、次のターンの終わりにここへ落ちる。ほかの敵にも当たる`)]);
   }
   if (dangerTiles().has(`${x},${y}`)) {
     // ブレス・ガーゴイルの大技・竜人の突進・ドラゴンゾンビの死骸の爆発
@@ -112,6 +137,13 @@ function tooltipHTML(x, y) {
       `${esc(f.owner)}が放った、追いかけてくる炎`,
       span("tip-sub", "ぶつかれば払って消せる。回避はできないが、盾と DEF で減らせる"),
       span("tip-sub", `あと${f.turns}ターンで消える`),
+    ]);
+  }
+  const corpse = corpseAt(x, y);
+  if (corpse) {
+    return tipBox(span("corpse", `${corpse.m.data.symbol} ${esc(corpse.m.data.name)}の死体`), [
+      corpse.wait > 0 ? `あと${corpse.wait}回動くと起き上がる(HP ${Math.round(corpse.m.data.ability.revive.hpRate * 100)}%)` : "今にも起き上がりそうだ",
+      span("tip-sub", "踏みつぶすと完全に倒せる(経験値・ドロップはそのとき)"),
     ]);
   }
   if (stairs && x === stairs.x && y === stairs.y) {
@@ -149,8 +181,14 @@ function tooltipHTML(x, y) {
   const hz = !it && hazardAt(x, y);
   if (hz) {
     const t = HAZARD_TYPES[hz], b = BALANCE.hazards[hz];
+    const temp = tempHazards.find(h => h.x === x && h.y === y);
     return tipBox(span(t.cls, `${t.symbol} ${t.name}`), [
-      `上にいるあいだ、行動するたびにダメージ。${DOT_TYPES[t.dot].name}にもなる(${b.dotTurns}ターン)`,
+      t.ailment
+        ? `ダメージはないが、上にいるあいだ${AILMENT_TYPES[t.ailment].name}が切れない(出れば${b.ailTurns}ターンで抜ける)`
+        : t.fog
+        ? `中にいるあいだ、盲目と${DOT_TYPES[t.dot].name}になる(ダメージは${DOT_TYPES[t.dot].name}だけ)`
+        : `上にいるあいだ、行動するたびにダメージ。${DOT_TYPES[t.dot].name}にもなる(${b.dotTurns}ターン)`,
+      ...(temp ? [span("tip-sub", `あと${temp.turns}ターンで消える`)] : []),
       span("tip-sub", "敵は平気。押しっぱなしで歩いているときは、手前で止まる"),
     ]);
   }
@@ -158,7 +196,9 @@ function tooltipHTML(x, y) {
     const eq = it.equip;
     const type = ITEM_TYPES[eq.slot];
     const found = base.records.equipFound[eq.id];
-    return tipBox(span(type.cls, `${type.symbol} ${type.name}の装備`), [found ? esc(equipName(eq)) : span("dim", "？？？(まだ拾ったことのない装備)")]);
+    const kind = weaponKindOf(eq); // 武器はジャンルの札も
+    return tipBox(span(type.cls, `${type.symbol} ${type.name}の装備`),
+      [found ? `${kind ? `${weaponKindBadgeHTML(kind)} ` : ""}${esc(equipName(eq))}` : span("dim", "？？？(まだ拾ったことのない装備)")]);
   }
   return "";
 }
@@ -180,7 +220,7 @@ function monsterTipHTML(m) {
     return tipBox(`${title}${span("dim", "？？？")}`, [
       span("tip-sub", "まだ戦ったことのない敵。戦うと図鑑に登録され、詳しいことが分かる"),
       m.primed ? span("down", "膨らんでいる！ 次に爆発する") : "",
-      m.charging ? span("down", `${d.ability.type === "sweep" ? "大技を構えている" : d.ability.type === "rush" ? "突進を溜めている" : "息を溜めている"}！ 赤いマスから離れろ`) : "",
+      m.charging ? span("down", `${d.ability.type === "sweep" ? "大技を構えている" : d.ability.type === "rush" || d.ability.rush ? "突進を溜めている" : "息を溜めている"}！ 赤いマスから離れろ`) : "",
     ]);
   }
   const badges = monsterClans(d).map(c => " " + clanBadgeHTML(c)).join(""); // 一族の札(2つある敵は両方)
@@ -197,9 +237,11 @@ function monsterTipHTML(m) {
     `<div class="tip-row"><span><span class="dim">攻撃</span> ${lo}〜${hi}</span><span><span class="dim">速さ</span> ${speedText(d.speed)}</span>`
       + `<span><span class="dim">向き</span> ${dirArrow(m.facing)}</span></div>`,
     // 気づいているか(色つきの札)と、その説明
-    m.hunting
+    m.calm
+      ? `<span class="tip-badge calm">見ている</span> ${span("tip-sub", "攻撃しなければ襲ってこない(見られているので不意打ちにならない)")}`
+      : m.hunting
       ? `<span class="tip-badge alert">気づいている</span> ${span("tip-sub", "追いかけてくる")}`
-      : `<span class="tip-badge calm">気づいていない</span> ${span("tip-sub", "殴ると不意打ちで2回攻撃")}`,
+      : `<span class="tip-badge calm">気づいていない</span> ${span("tip-sub", `殴ると不意打ちで${weaponKindOf(equipped.weapon) === "dagger" ? BALANCE.daggerSneakHits : BALANCE.sneakHits}回攻撃`)}`,
   ];
   if (d.ability) lines.push(span("tip-sub", MONSTER_ABILITIES[d.ability.type](d.ability)));
   // 今の状態
@@ -207,13 +249,20 @@ function monsterTipHTML(m) {
   if (m.primed) lines.push(span("down", "膨らんでいる！ 次に爆発する"));
   if (m.charging) lines.push(span("down", d.ability.type === "sweep"
     ? `${m.chargeKind === "spin" ? "回転切り" : "薙ぎ払い"}を構えている！ 赤いマスから離れろ`
-    : d.ability.type === "rush" ? "突進を溜めている！ 赤い線から横へ離れろ"
+    : d.ability.type === "rush" || d.ability.rush ? "突進を溜めている！ 赤い線から横へ離れろ"
     : `${ELEMENT_DATA[d.ability.element].name}のブレスを溜めている！ 赤いマスから離れろ`));
+  if (m.blazing) lines.push(span("down", "体が赤熱している！ 次に爆炎。赤いマスから離れろ"));
+  if (m.stomping) lines.push(span("down", `前足を振り上げている！ あと${Math.max(0, m.stompAt - turn)}ターンで地響き。赤いマスから離れろ`));
+  if (m.meteor) lines.push(span("down", `エクリプスメテオを詠唱している！ 詠唱中は倒せない(あと${Math.max(0, m.meteor.at - turn)}ターン)`));
+  if (m.roared) lines.push(span("down", `咆哮で猛っている(攻撃力+${Math.round(d.ability.roar.atkUp * 100)}%)`));
   if (m.stunned > 0) lines.push(span("dim", `体勢を崩している(あと${m.stunned}回動けない)`));
   if (m.summoned) lines.push(span("dim", "呼び出されたもの(倒しても素材だけ。術師を倒すと崩れ落ちる)"));
   const boss = commanderOf(m);
   if (boss) lines.push(span("down", `${esc(monsterName(boss))}の号令で、攻撃力+${Math.round(boss.data.ability.atkUp * 100)}%`));
   if (m.poison) lines.push(span("poison", `毒 ${m.poison.dmg}×${m.poison.turns}`));
+  if (m.enraged) lines.push(span("down", `怒り狂っている(攻撃力+${Math.round(d.ability.atkUp * 100)}%・ときどき空振りする)`));
+  if (inWall(m)) lines.push(span("dim", "壁の中にいる(殴れないが、殴ってもこない)"));
+  if (m.burrowLeft !== undefined) lines.push(span("down", `逃げている(あと${m.burrowLeft}回逃げると床に潜って消える)`));
   if (m.fleeing > 0) lines.push(span("down", `${m.stolenTool ? esc(toolLabel(m.stolenTool)) : "回復薬"}を盗んで逃げている(倒せば取り返せる)`));
   return tipBox(head, lines);
 }

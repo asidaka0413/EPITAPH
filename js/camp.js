@@ -89,12 +89,16 @@ function chooseCamp() {
     return;
   }
   turn += 1;
-  // 毒・やけど・衰弱・鈍足・盲目はキャンプで治る
+  // 毒・やけど・衰弱・鈍足・盲目・混乱・拘束・凍え・しびれはキャンプで治る
   const hadDots = cureDots();
-  if (hadDots || playerWeak || playerSlow || playerBlind) {
+  const hadAilments = cureAilments();
+  playerBindGuard = 0;
+  if (hadDots || hadAilments || playerWeak || playerSlow || playerBlind || playerConfused || playerBound) {
     playerWeak = null;
     playerSlow = null;
     playerBlind = null;
+    playerConfused = null;
+    playerBound = null;
     addLog("キャンプで一息ついて、体の調子が戻った");
   }
   if (opt.pickEquip) opt.apply(campEquipList()[campPickCursor]);

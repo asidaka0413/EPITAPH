@@ -36,6 +36,7 @@ function pickUpTreasureMap(it) {
   }
   items = items.filter(i => i !== it);
   runTools.push({ id: "treasureMap", count: 1, mapDepth: it.treasureMap.mapDepth });
+  playSE("pickup"); // 効果音(js/sound.js)
   addLog(`宝の地図を拾った！ 地下${it.treasureMap.mapDepth}階に宝が眠っているらしい`);
 }
 

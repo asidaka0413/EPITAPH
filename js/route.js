@@ -83,7 +83,12 @@ function goToFloor(newDepth, route = STAIR_ROUTES[0]) {
   makeMap();
   addLog(route.fall ? `深い穴に飛びこんだ…地下${depth}階まで落ちてきた` : `地下${depth}階に降りた`);
   if (route.id === "dark") addLog("あたりは真っ暗だ。周りしか見えない…");
-  if (layerOf(depth) !== layerOf(prev)) addLog(`――${layerOf(depth).name}に入った。ここから先は、さらに厳しくなる`);
+  fadeInFloor(); // 演出:暗いところから、ふわっと明るくなる
+  playSE("stairs"); // 効果音(js/sound.js)
+  if (layerOf(depth) !== layerOf(prev)) {
+    addLog(`――${layerOf(depth).name}に入った。ここから先は、さらに厳しくなる`);
+    showBanner(layerOf(depth).name, `地下${depth}階`, "banner-layer"); // 演出:層の名前を大きく出す
+  }
   announceElite();
   announceGrave();
   checkTreasureMaps(); // 過ぎた地図は消える。地図の階なら知らせる

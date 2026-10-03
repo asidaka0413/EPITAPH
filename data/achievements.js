@@ -85,6 +85,8 @@ const ACHIEVEMENT_DATA = [
   { id: "engraved50",  name: "刻む者",         desc: "刻印を50個刻む",          tab: "collect", stat: "engraved", goal: 50 },
   { id: "plus15",      name: "鍛え抜かれた刻印", desc: "刻印を+15まで強化する",  tab: "collect", stat: "maxPlus", goal: 15 },
   { id: "shadowRobe",  name: "影をまとう者",   desc: "隠し装備「影の衣」を拾う", tab: "collect", secret: true, check: () => !!base.records.equipFound.shadow_robe },
+  { id: "gemCarapace", name: "宝石の目利き", desc: "隠し装備「宝石虫の甲殻」を拾う", tab: "collect", secret: true, check: () => !!base.records.equipFound.gem_carapace },
+  { id: "pixieWing",   name: "妖精の友",     desc: "隠し装備「妖精の羽飾り」を拾う", tab: "collect", secret: true, check: () => !!base.records.equipFound.pixie_wing },
 
   // ---------- ひみつ(変わった遊び方。取るまで名前も条件も分からない) ----------
   { id: "earlyGrave", name: "早すぎた墓", desc: "地下1階で冒険を終える", tab: "secret", secret: true,

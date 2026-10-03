@@ -48,6 +48,7 @@ function revealMimic(m, bite) {
   m.disguised = false;
   m.hunting = true;
   m.justNoticed = true; // 正体を現したターンは、もう動かない(噛みつきは下でする)
+  playSE("mimic"); // 効果音(js/sound.js)
   addLog(`宝箱は${monsterName(m)}だった！`);
   if (bite) hitPlayer(monsterPower(m), { label: `${monsterName(m)}の噛みつき`, cause: monsterName(m), killer: m.data.id });
 }
@@ -65,6 +66,7 @@ function dropMimicTreasure(m) {
 // 宝箱を開ける(上に乗ったとき):中の装備を拾う
 function openChest(chest) {
   chests = chests.filter(c => c !== chest);
+  playSE("chest"); // 効果音(js/sound.js)
   addLog("宝箱を開けた！");
   // chestDoubleChance の確率で、装備が2個入っている
   const count = chance(BALANCE.chestDoubleChance * 100) ? 2 : 1;
@@ -111,6 +113,7 @@ function dropLump(m) {
 // 謎の塊を拾った
 function gainLump() {
   runLumps += 1;
+  playSE("pickup"); // 効果音(js/sound.js)
   addLog(`謎の塊を拾った！ キャンプで鑑定される(${runLumps}個)`);
 }
 
